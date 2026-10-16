@@ -12,6 +12,7 @@ import {
   classifyDns,
   classifyFailure,
   dashboardUrl,
+  isMissingPagesProject,
   describeAccounts,
   evaluatePreflight,
   explainChecklistItem,
@@ -22,6 +23,7 @@ import {
   freshDatabase,
   mapSetupError,
   nextProgress,
+  pagesProbePaths,
   parseDevVars,
   patchWrangler,
   pickAccount,
@@ -327,7 +329,9 @@ async function gatherPreflight(project, domain) {
     }
   }
   state.accountId = picked.account.id
-  const pages = await listAll(`/accounts/${state.accountId}/pages/projects`)
+  const pagePaths = pagesProbePaths(state.accountId, project)
+  const pages = await cf(pagePaths.list)
+  const namedProject = await cf(pagePaths.project)
   const databases = await listAll(`/accounts/${state.accountId}/d1/database`)
   const buckets = await cf(`/accounts/${state.accountId}/r2/buckets`)
   let zone = null
@@ -352,7 +356,7 @@ async function gatherPreflight(project, domain) {
     zone,
     dns,
     probes: {
-      pages: asProbe(pages),
+      pages: asProbe(pages.ok && !namedProject.ok && !isMissingPagesProject(namedProject) ? namedProject : pages),
       d1: asProbe(databases),
       r2: asProbe(buckets),
       zone: domain ? asProbe(zoneBody) : undefined,
@@ -364,7 +368,7 @@ async function gatherPreflight(project, domain) {
     resources: {
       databases: databases.ok ? databases.result : [],
       buckets: buckets.ok ? buckets.result : null,
-      projects: pages.ok ? pages.result : [],
+      projects: namedProject.ok ? [{ name: project }] : [],
     },
   }
 }
@@ -583,9 +587,8 @@ async function main() {
   if (!plan.commands.some((line) => line.startsWith('reuse pages'))) {
     const created = run(['npx', 'wrangler', 'pages', 'project', 'create', project, '--production-branch', 'main'])
     if (!created.ok) {
-      const again = await listAll(`/accounts/${state.accountId}/pages/projects`)
-      const visible = again.ok && (again.result || []).some((item) => item.name === project)
-      if (!visible) die('pages', created.output)
+      const again = await cf(pagesProbePaths(state.accountId, project).project)
+      if (!again.ok) die('pages', isMissingPagesProject(again) ? created.output : errorsRaw(again))
     }
   }
   saved = nextProgress(saved, { steps: { pages: 'done' } })

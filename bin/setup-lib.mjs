@@ -61,6 +61,42 @@ export function extractErrorCodes(text) {
   return [...codes]
 }
 
+export function pagesProbePaths(accountId, project) {
+  return {
+    list: `/accounts/${encodeURIComponent(accountId)}/pages/projects`,
+    project: `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(project)}`,
+  }
+}
+
+export function cloudflareMessages(raw) {
+  const text = stripAnsi(String(raw ?? '')).trim()
+  if (!text) return []
+  const found = []
+  const collect = (value) => {
+    if (!value || typeof value !== 'object') return
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item)
+      return
+    }
+    if (typeof value.message === 'string' && value.message.trim()) found.push(value.message.trim())
+    if (value.errors) collect(value.errors)
+  }
+  try {
+    collect(JSON.parse(text))
+  } catch {
+    // Wrangler and fetch failures are plain text.
+  }
+  if (found.length) return [...new Set(found)]
+  const plain = text.split('\n').filter((line) => !/^\s*at \S/.test(line)).join(' ').trim()
+  return plain ? [plain.slice(0, 400)] : []
+}
+
+export function isMissingPagesProject({ status, raw = '', errors } = {}) {
+  if (status === 404) return true
+  const payload = raw || JSON.stringify({ errors: errors || [] })
+  return extractErrorCodes(payload).includes('8000007')
+}
+
 export function classifyFailure({ raw = '', status, step } = {}) {
   const text = stripAnsi(raw)
   const lower = text.toLowerCase()
@@ -69,10 +105,13 @@ export function classifyFailure({ raw = '', status, step } = {}) {
   if (/enotfound|econnreset|etimedout|eai_again|fetch failed|socket hang up|getaddrinfo|network error/.test(lower)) {
     return { kind: 'network', codes }
   }
+  if (status === 404 || codes.includes('8000007')) return { kind: 'not-found', codes }
   if (codes.includes('10000') || /authentication error|invalid api token|invalid access token/.test(lower)) {
     return { kind: 'auth', codes }
   }
-  if (codes.includes('9109') || status === 403 || /not authorized|permission denied|insufficient permission|unauthorized to access/.test(lower)) {
+  const foreignCodes = codes.filter((code) => code !== '9109' && code !== '10000')
+  const permissionText = /not authorized|permission denied|insufficient permission|unauthorized to access/.test(lower)
+  if (codes.includes('9109') || (foreignCodes.length === 0 && (status === 403 || permissionText))) {
     return { kind: 'permission', codes }
   }
   if (/exceeded the limit|too many .*d1|d1 database.*limit|maximum number of databases|quota exceeded/.test(lower)) {
@@ -312,7 +351,7 @@ export function evaluatePreflight(input = {}) {
     }
     const raw = result?.raw || ''
     const kind = classifyFailure({ raw, status: result?.status, step: id }).kind
-    items.push(checkLine(id, 'fail', failEn, failZh, { kind: kind === 'unknown' ? 'permission' : kind, raw, permission }))
+    items.push(checkLine(id, 'fail', failEn, failZh, { kind, raw, permission }))
   }
 
   probe('pages', 'Pages API reachable', 'Pages 接口可访问', 'Pages API failed', 'Pages 接口失败', 'pages')
@@ -329,7 +368,7 @@ export function evaluatePreflight(input = {}) {
       'fail',
       disabled ? 'R2 is not enabled (error 10042)' : 'R2 API failed',
       disabled ? '尚未开通 R2（错误 10042）' : 'R2 接口失败',
-      { kind: disabled ? 'r2-disabled' : (classified === 'unknown' ? 'permission' : classified), raw, permission: 'r2' },
+      { kind: disabled ? 'r2-disabled' : classified, raw, permission: 'r2' },
     ))
   }
 
@@ -379,11 +418,12 @@ export function mapSetupError(input = {}) {
   const classified = input.kind
     ? { kind: input.kind, codes: extractErrorCodes(input.raw || '') }
     : classifyFailure(input)
+  const cfMessage = redact(cloudflareMessages(input.raw).join('; '), input.secrets || [])
+  const codeText = classified.codes.join(', ') || 'unknown'
   const accountId = input.accountId || '<account-id>'
   const project = input.project || '<project>'
   const domain = input.domain || '<domain>'
   const rerun = input.rerun || rerunCommand(input)
-  const detail = publicDetail(input.raw || '', input.secrets)
   const pages = dashboardUrl(input.accountId, input.project ? `pages/view/${input.project}` : 'pages')
   const zoneDns = input.zoneId ? dashboardUrl(input.accountId, `${input.zoneId}/dns/records`) : dashboardUrl(input.accountId, 'domains')
   const needed = permissionLines([
@@ -472,12 +512,19 @@ export function mapSetupError(input = {}) {
       actionZh: `换到拥有该域名的账号对应的 token，或把域名添加到当前账号。`,
       actionEn: `Use a token for the account that owns the zone, or add the zone to this account.`,
     },
+    'not-found': {
+      link: pages,
+      zh: `没有找到这个资源（HTTP 404 或错误 8000007）。Pages 项目不存在时，安装会改为创建。`,
+      en: `Cloudflare reported this resource was not found (HTTP 404 or error 8000007). A missing Pages project is created.`,
+      actionZh: `确认名称后重跑。找不到的 Pages 项目会在这一步创建。`,
+      actionEn: `Check the name and rerun. Setup creates a Pages project when this lookup says it is missing.`,
+    },
     unknown: {
       link: pages,
-      zh: `步骤「${input.step || 'setup'}」失败。下面是去掉终端颜色码后的说明。堆栈默认不打印，需要时加 --debug。`,
-      en: `Step "${input.step || 'setup'}" failed. The note below has terminal color codes removed. Pass --debug to include the stack trace.`,
-      actionZh: `处理下面的说明后重跑。进度在 ${PROGRESS_FILE}。`,
-      actionEn: `Fix the note below, then rerun. Progress is stored in ${PROGRESS_FILE}.`,
+      zh: `步骤「${input.step || 'setup'}」失败。Cloudflare 错误码 ${codeText}：${cfMessage || '没有附加说明'}。`,
+      en: `Step "${input.step || 'setup'}" failed. Cloudflare error ${codeText}: ${cfMessage || 'no additional message'}.`,
+      actionZh: `按上面的 Cloudflare 说明处理后再重跑。这不是权限错误。堆栈需要 --debug 才会打印。进度在 ${PROGRESS_FILE}。`,
+      actionEn: `Use the Cloudflare message above, then rerun. This is not a token permission error. Pass --debug for a stack trace. Progress is stored in ${PROGRESS_FILE}.`,
     },
   }
   const copy = catalog[classified.kind] || catalog.unknown
@@ -490,7 +537,7 @@ export function mapSetupError(input = {}) {
     en: copy.en,
     actionZh: copy.actionZh,
     actionEn: copy.actionEn,
-    detail: classified.kind === 'unknown' ? detail : '',
+    detail: '',
     rerun,
     accountId,
     project,

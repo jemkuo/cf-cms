@@ -137,7 +137,8 @@ Setup stops with a checklist and a bilingual note when a check fails. The note n
 | --- | --- |
 | `✗` R2 is not enabled, error 10042 | Open `https://dash.cloudflare.com/<account-id>/r2/overview` and enable R2. Some accounts need a payment method on file first. The free tier still applies afterward. Rerun the printed command. |
 | Token rejected, error 10000 | Create a new token with the scopes in [API token scopes](#api-token-scopes). Export `CLOUDFLARE_API_TOKEN` and rerun. |
-| Missing permission, error 9109 | The checklist names the probe that failed. Add Account Settings Read, Pages Edit, D1 Edit, and Workers R2 Storage Edit. Add Zone Read and DNS Edit when you use a domain. |
+| Missing permission, error 9109, 10000, or HTTP 403 | The checklist names the probe that failed. Add Account Settings Read, Pages Edit, D1 Edit, and Workers R2 Storage Edit. Add Zone Read and DNS Edit when you use a domain. |
+| Any other Cloudflare code, including 8000024 | Read the code and the Cloudflare message in the bilingual note. 8000024 means that request was rejected. It does not mean the Pages token permission is missing. Setup lists Pages with `GET /accounts/<account-id>/pages/projects` and looks up one project with `GET /accounts/<account-id>/pages/projects/<name>`. HTTP 404 or error 8000007 means that project is absent and setup will create it. |
 | D1, R2, or Pages already exists | Rerun. The same names are reused. Pass `--database-id <uuid>` only when you want a specific database. |
 | D1 database limit | Delete an unused database at `https://dash.cloudflare.com/<account-id>/workers/d1`, then rerun. |
 | Pages project name taken | Choose another `--project` value. The name is already used somewhere this token cannot reuse. |
@@ -189,7 +190,8 @@ CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 安装脚本会先打印预检清单（`✓` / `✗`）。有 `✗` 时不会创建资源。失败说明同时给出中文和 English：哪一步、原因、带 account id 的仪表盘链接、处理办法，以及重跑命令。Token 放在环境变量 `CLOUDFLARE_API_TOKEN` 里，不会出现在命令或输出中。加 `--debug` 才会打印去掉密钥后的堆栈。进度写在被 git 忽略的 `.cf-cms-setup.json`，重跑会接着做。
 
 - **R2 未开通（错误 10042）。** 打开 `https://dash.cloudflare.com/<account-id>/r2/overview` 开通 R2。有的账号要先添加付款方式，开通后仍可走免费额度。然后重跑。
-- **Token 无效（错误 10000）或权限不足（错误 9109）。** 按上面的权限表补齐：Account Settings 读取、Pages 编辑、D1 编辑、R2 编辑。要绑域名时再加上 Zone 读取和 DNS 编辑。
+- **Token 无效（错误 10000）或权限不足（错误 9109、HTTP 403）。** 按上面的权限表补齐：Account Settings 读取、Pages 编辑、D1 编辑、R2 编辑。要绑域名时再加上 Zone 读取和 DNS 编辑。
+- **其他错误码（例如 8000024）。** 看说明里的错误码和 Cloudflare 原文。8000024 表示这次请求不被接受，并不是 Pages 权限缺失。预检列出项目用 `GET /accounts/<account-id>/pages/projects`（不带分页参数），确认某个项目用 `GET /accounts/<account-id>/pages/projects/<name>`。HTTP 404 或错误 8000007 表示项目还不存在，安装会去创建。
 - **同名资源已存在。** 直接重跑。同名 D1、R2、Pages 会复用，迁移可以重复执行。
 - **D1 数量到上限。** 在 `https://dash.cloudflare.com/<account-id>/workers/d1` 删掉不用的库，再重跑。
 - **Pages 项目名被占用。** 换一个 `--project`。

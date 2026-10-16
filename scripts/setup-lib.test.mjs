@@ -7,6 +7,8 @@ import {
   classifyFailure,
   evaluatePreflight,
   explainChecklistItem,
+  isMissingPagesProject,
+  pagesProbePaths,
   findDatabase,
   formatChecklist,
   formatSetupError,
@@ -258,4 +260,66 @@ test('classifyFailure reads JSON codes and wrangler text', () => {
   assert.equal(classifyFailure({ raw: '{"errors":[{"code":10042,"message":"Please enable R2"}]}' }).kind, 'r2-disabled')
   assert.equal(classifyFailure({ raw: 'permission denied', status: 403 }).kind, 'permission')
   assert.equal(classifyFailure({ step: 'domain', raw: 'validation still pending' }).kind, 'domain')
+})
+
+test('Pages error 8000024 is an API error, not a missing permission', () => {
+  const raw = JSON.stringify({
+    status: 400,
+    errors: [{ code: 8000024, message: 'Invalid request parameters' }],
+  })
+  for (const status of [400, 403]) {
+    assert.equal(classifyFailure({ raw, status, step: 'pages' }).kind, 'unknown')
+  }
+  const text = formatSetupError(mapSetupError({
+    step: 'pages',
+    raw,
+    status: 403,
+    accountId,
+    project,
+    domain,
+  }))
+  assert.match(text, /8000024/)
+  assert.match(text, /Invalid request parameters/)
+  assert.match(text, /中文：/)
+  assert.match(text, /English:/)
+  assert.equal(/missing a permission/i.test(text), false)
+  const report = evaluatePreflight({
+    tokenSupplied: true,
+    tokenActive: true,
+    accounts: [{ id: accountId, name: 'Example' }],
+    probes: {
+      pages: { ok: false, status: 400, raw, code: 8000024 },
+      d1: { ok: true },
+      r2: { ok: true },
+    },
+  })
+  const pagesItem = report.items.find((item) => item.id === 'pages')
+  assert.equal(pagesItem.kind, 'unknown')
+  const guidance = explainChecklistItem(pagesItem, { accountId, project, domain })
+  assert.match(guidance, /8000024/)
+  assert.match(guidance, /Invalid request parameters/)
+  assert.equal(/missing a permission/i.test(guidance), false)
+})
+
+test('Pages project lookup uses an unfiltered list and treats 8000007 as missing', () => {
+  const paths = pagesProbePaths(accountId, project)
+  assert.equal(paths.list.includes('?'), false)
+  assert.equal(paths.list, `/accounts/${accountId}/pages/projects`)
+  assert.equal(paths.project, `/accounts/${accountId}/pages/projects/${project}`)
+  assert.equal(isMissingPagesProject({ status: 404 }), true)
+  assert.equal(isMissingPagesProject({
+    status: 400,
+    raw: JSON.stringify({ errors: [{ code: 8000007, message: 'Project not found' }] }),
+  }), true)
+  assert.equal(isMissingPagesProject({ status: 400, raw: JSON.stringify({ errors: [{ code: 8000024, message: 'Invalid request parameters' }] }) }), false)
+  assert.equal(classifyFailure({
+    raw: JSON.stringify({ errors: [{ code: 8000007, message: 'Project not found' }] }),
+    status: 404,
+    step: 'pages',
+  }).kind, 'not-found')
+  assert.equal(classifyFailure({
+    raw: '{"errors":[{"code":9109,"message":"Unauthorized to access requested resource"}]}',
+    status: 403,
+    step: 'pages',
+  }).kind, 'permission')
 })
