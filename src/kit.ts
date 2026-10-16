@@ -282,6 +282,7 @@ export async function applyVisualKit(env: Env, templateId: string, mark: string)
     showTags: preset.showTags,
     showShare: preset.showShare,
     showKicker: preset.showKicker,
+    show_powered_by: current.layout.show_powered_by,
   })
   const brand = parseBrand({
     mark: chosen,

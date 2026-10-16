@@ -166,6 +166,10 @@ These are original layouts. The WordPress themes named below were popular refere
 
 Paper, Ink, and Terminal are the original CF CMS layouts. In Template settings, picking another name applies its accent, type, and layout. **Generate visual kit** (on that screen or on Brand) writes an SVG logo and favicon, theme color, and layout for the active template. It does not replace the site description or title suffix, so the homepage keeps the language-specific line. Saving a new theme color recolors a generated kit logo. Replace the logo with your own SVG or a PNG. PNG files go to R2. SVG stays in D1 settings. The stylesheet link includes the active template and brand, so a normal refresh picks up a template change.
 
+## Footer credit
+
+Every public page, in every template and language, ends the footer with a small muted line: Powered by [CF CMS](https://github.com/jemkuo/cf-cms). The wording stays English, including on Arabic pages. Admin screens do not show it, and it is not part of Article JSON-LD. It is on unless the layout setting `show_powered_by` is false. A saved layout that has no such field stays on. Turn it off under **Layout** (`/<ADMIN_SAFEPATH>/admin/layout`), or with MCP `update_layout` `{ "show_powered_by": false }`. `get_settings` returns the field on the `layout` section.
+
 ## Day-2
 
 - Admin URL pattern: `/<ADMIN_SAFEPATH>/admin/`. Setup writes a random `ADMIN_SAFEPATH` Pages secret and prints the URL once. `/admin` and `/admin/login` return 404. After the secret path, the password or Cloudflare Access session is still required. Template, brand, layout, channels, meta, tags, and share links are separate screens. Per-post meta (noindex, canonical, keywords, Open Graph image) is on the post form.
@@ -184,6 +188,8 @@ CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 5. 一键视觉套件：按当前模板生成配套标志和主题色。
 
 另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、标签和分享链接设置。示例站点名是 Field Notes。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
+
+公开页脚最后一行是较小、较淡的 “Powered by CF CMS”（各语言都用这句英文，CF CMS 链到 GitHub 仓库）。后台页面不显示，也不会写进 JSON-LD。默认开启。版式里没有 `show_powered_by` 时仍视为开启。在 **Layout**（`/<ADMIN_SAFEPATH>/admin/layout`）取消勾选，或用 MCP `update_layout` 传入 `{ "show_powered_by": false }` 即可关掉。`get_settings` 的 `layout` 段会返回这个字段。
 
 ### 故障排查
 

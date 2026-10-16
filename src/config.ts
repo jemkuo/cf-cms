@@ -2,6 +2,7 @@ import type { Lang, PostMeta } from './types'
 import { LANGS } from './types'
 import { clip, nowIso, slugOk } from './text'
 import { TEMPLATE_IDS, type TemplateId } from './templates'
+import { showPoweredBy } from './footer-credit.mjs'
 
 export { TEMPLATE_IDS, type TemplateId }
 export const ACCENTS = ['vermilion', 'blue', 'green', 'gold', 'slate'] as const
@@ -29,6 +30,7 @@ export type LayoutSettings = {
   showTags: boolean
   showShare: boolean
   showKicker: boolean
+  show_powered_by: boolean
 }
 export type SiteMetaSettings = {
   description: string
@@ -88,6 +90,7 @@ export const DEFAULT_CONFIG: SiteConfig = {
     showTags: true,
     showShare: true,
     showKicker: true,
+    show_powered_by: true,
   },
   meta: {
     description: '',
@@ -168,6 +171,7 @@ export function parseLayout(input: unknown): LayoutSettings {
     showTags: flag(row.showTags, base.showTags),
     showShare: flag(row.showShare, base.showShare),
     showKicker: flag(row.showKicker, base.showKicker),
+    show_powered_by: showPoweredBy(row.show_powered_by),
   }
 }
 

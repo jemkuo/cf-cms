@@ -1,5 +1,6 @@
 import { html, raw } from 'hono/html'
 import type { SiteConfig } from '../config'
+import { poweredByMarkup } from '../footer-credit.mjs'
 import { COPY, LANG_META } from '../i18n'
 import { brandStyle, hasLogo, iconHref, logoHtml, markText } from '../kit'
 import { siteName } from '../site'
@@ -41,7 +42,7 @@ function abs(origin: string, path: string): string {
 function styleHref(settings: SiteConfig): string {
   const brand = settings.brand.themeColor.replace('#', '') || 'accent'
   const token = [
-    '4',
+    '5',
     settings.template.id,
     settings.template.font,
     settings.template.accent,
@@ -232,6 +233,7 @@ function footer(input: Shell, ui: (typeof COPY)[Lang], origin: string, handle: s
         ${share.website ? html`<a rel="me" href="${share.website}">Site</a>` : ''}
       </nav>
       <p class="copy">© ${year} ${name}</p>
+      ${input.settings.layout.show_powered_by ? raw(poweredByMarkup()) : ''}
     </div>
   </footer>`
 }

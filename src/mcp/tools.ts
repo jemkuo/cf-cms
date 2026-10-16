@@ -492,6 +492,7 @@ export const TOOLS: Tool[] = [
             showTags: preset.showTags,
             showShare: preset.showShare,
             showKicker: preset.showKicker,
+            show_powered_by: current.layout.show_powered_by,
           }),
         )
       }
@@ -569,7 +570,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'update_layout',
-    description: 'Set width, header, home list style, and whether author, tags, share, and kicker show.',
+    description: 'Set width, header, home list style, and whether author, tags, share, kicker, and the public Powered by CF CMS line show. show_powered_by defaults to true when the saved layout has no such field.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -580,6 +581,7 @@ export const TOOLS: Tool[] = [
         showTags: { type: 'boolean' },
         showShare: { type: 'boolean' },
         showKicker: { type: 'boolean' },
+        show_powered_by: { type: 'boolean' },
       },
     },
     async run(env, args) {

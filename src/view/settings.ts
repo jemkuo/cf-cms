@@ -153,6 +153,7 @@ export function layoutView(base: Base, ok?: string, error?: string) {
         ${check('showTags', value.showTags, 'Show tags')}
         ${check('showShare', value.showShare, 'Show share actions and RSS')}
         ${check('showKicker', value.showKicker, 'Show the home kicker')}
+        ${check('show_powered_by', value.show_powered_by, 'Show Powered by CF CMS in the public footer')}
         <button type="submit">Save layout</button>
       </form>
     </div>`,

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Public pages add a muted footer line, Powered by CF CMS, after the copyright. It uses the same English wording in every language, stays off admin screens and out of JSON-LD, and follows layout setting `show_powered_by` (missing means on). Toggle it on the Layout screen or with MCP `update_layout`.
 - Pages preflight calls `GET /accounts/{account}/pages/projects` with no query string, and detects an existing project with `GET /accounts/{account}/pages/projects/{name}`. HTTP 404 and error 8000007 mean the project is absent. Error 8000024 stays an API error and prints Cloudflare's message. Only 9109, 10000, and HTTP 403 are treated as permission failures.
 - Setup preflight checks the API token, account, Pages, D1, R2, and the custom-domain zone before it creates anything. Reruns reuse an existing D1 database, R2 bucket, and Pages project. Sample posts load only for a new database unless `--seed` is set. Conflicting DNS records are shown and replaced only with `--replace-dns` or a `y` confirmation. Failures print bilingual guidance instead of a stack trace.
 - The product name is CF CMS. The npm package is `cf-cms`. The sample site stays Field Notes.

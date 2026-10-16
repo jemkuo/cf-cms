@@ -69,6 +69,7 @@ export function mountSettings(app: Hono<AppEnv>) {
             showTags: preset.showTags,
             showShare: preset.showShare,
             showKicker: preset.showKicker,
+            show_powered_by: current.layout.show_powered_by,
           }),
         )
         await refresh(c)
@@ -126,6 +127,7 @@ export function mountSettings(app: Hono<AppEnv>) {
       showTags: bag.showTags === 'on',
       showShare: bag.showShare === 'on',
       showKicker: bag.showKicker === 'on',
+      show_powered_by: bag.show_powered_by === 'on',
     })
     await saveSettings(c.env.DB, 'layout', layout)
     await refresh(c)
