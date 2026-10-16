@@ -1,0 +1,42 @@
+{
+  "name": "cf-cms",
+  "version": "0.1.0",
+  "description": "CF CMS: a multilingual blog and CMS on the Cloudflare free tier (Pages, D1, R2, Workers AI), with MCP and prefab themes.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": ["cloudflare", "pages", "d1", "r2", "blog", "cms", "workers-ai"],
+  "homepage": "https://github.com/jemkuo/cf-cms",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jemkuo/cf-cms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jemkuo/cf-cms/issues"
+  },
+  "bin": {
+    "create-cf-cms": "./bin/create-cf-cms.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler pages dev public --port 8791 --ip 0.0.0.0 --persist-to .wrangler/state",
+    "db:migrate": "wrangler d1 migrations apply cf-blogger-db --local",
+    "db:seed": "node scripts/render-seed.mjs && wrangler d1 execute cf-blogger-db --local --file=seed/seed.sql",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "seed:file": "node scripts/render-seed.mjs",
+    "check": "tsc --noEmit && node scripts/check-release.mjs",
+    "mcp": "node bin/mcp-stdio.mjs",
+    "setup": "node bin/create-cf-cms.mjs",
+    "deploy": "wrangler pages deploy public"
+  },
+  "dependencies": {
+    "hono": "4.10.7",
+    "marked": "15.0.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20251011.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.42.0"
+  }
+}

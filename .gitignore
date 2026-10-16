@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+!.dev.vars.example
+dist/
+*.log
+.DS_Store
+.secrets
+*.pem
+*.key
+agent-tools/

@@ -1,0 +1,18 @@
+# Copy to .dev.vars for local `wrangler pages dev`. Do not commit .dev.vars.
+# Production secrets are set with `wrangler pages secret put`, not in this file.
+
+ADMIN_PASSWORD=
+SESSION_SECRET=
+ADMIN_API_TOKEN=
+# Required. Admin UI is only at /<ADMIN_SAFEPATH>/admin/ — /admin alone returns 404.
+# Generate with: openssl rand -hex 16
+ADMIN_SAFEPATH=
+SITE_URL=http://127.0.0.1:8791
+
+# Optional Cloudflare Access. Leave empty to use the password only.
+CF_ACCESS_TEAM_DOMAIN=
+CF_ACCESS_AUD=
+
+# Optional Workers AI model overrides.
+# AI_MODEL=@cf/meta/llama-3.2-3b-instruct
+# AI_MT_MODEL=@cf/meta/m2m100-1.2b

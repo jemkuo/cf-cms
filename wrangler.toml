@@ -1,0 +1,23 @@
+name = "cf-cms"
+compatibility_date = "2025-10-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "public"
+
+[vars]
+SITE_URL = "https://example.com"
+SITE_NAME = "Field Notes"
+SITE_X = ""
+DEFAULT_AUTHOR = "Field Notes"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cf-blogger-db"
+database_id = "00000000-0000-0000-0000-0000000000b1"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "cf-blogger-media"
+
+[ai]
+binding = "AI"
