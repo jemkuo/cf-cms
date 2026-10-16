@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Setup preflight checks the API token, account, Pages, D1, R2, and the custom-domain zone before it creates anything. Reruns reuse an existing D1 database, R2 bucket, and Pages project. Sample posts load only for a new database unless `--seed` is set. Conflicting DNS records are shown and replaced only with `--replace-dns` or a `y` confirmation. Failures print bilingual guidance instead of a stack trace.
 - The product name is CF CMS. The npm package is `cf-cms`. The sample site stays Field Notes.
 - Stylesheet URL includes the active template and brand so a refresh loads new CSS. A visual kit no longer replaces the site description or title suffix. Saving a theme color recolors a generated kit logo. Sans and mono templates set heading type.
 - Sample posts, the default author, and Article JSON-LD use the product name. The footer stays `© <year> <SITE_NAME>`.

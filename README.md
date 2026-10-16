@@ -33,7 +33,7 @@ Cloudflare Pages Functions  (SSR, /zh /en /ja /es /ar)
 npm install && ./scripts/setup.sh
 ```
 
-The script asks for a Cloudflare API token and account id, creates D1, R2, and a Pages project, applies migrations, sets secrets, and deploys. Nothing is printed back. Add `--dry-run` to see the plan without calling Cloudflare.
+The script reads `CLOUDFLARE_API_TOKEN` from the environment. When that token can see one account, the account id is filled in for you; with several accounts, pass `--account-id`. Before it creates anything, it prints a preflight checklist (token, Pages, D1, R2, and the zone when you set a domain). R2 must already be enabled. A rerun reuses the same D1 database, R2 bucket, and Pages project. Sample posts are loaded only into a new database. If you omit the admin password, a random one is written to `.dev.vars` and is not printed. Add `--dry-run` to see the checklist and the plan without creating resources.
 
 Local preview, no Cloudflare login:
 
@@ -122,10 +122,35 @@ Least privilege for the agent: generate `ADMIN_API_TOKEN` with `openssl rand -he
 
 ## Custom domain
 
-1. Leave the zone on the same Cloudflare account.
-2. Run setup with the domain, or in Pages → Custom domains add the hostname.
-3. DNS is a CNAME to `<project>.pages.dev` (apex domains use the CNAME Cloudflare shows).
-4. Set `SITE_URL` in `wrangler.toml` to `https://your.domain` and deploy again so canonical URLs match.
+1. Keep the zone on the same Cloudflare account. Setup looks the zone up with the API token.
+2. Run setup with `--domain example.com`.
+3. When that hostname has no A, AAAA, or CNAME, setup creates a proxied CNAME to `<project>.pages.dev`.
+4. When those records already exist, setup prints them and leaves them alone. Pass `--replace-dns`, or answer `y` at the prompt, to delete them and write the CNAME. `--yes` does not delete DNS by itself. An old proxied A record on the apex keeps the Pages domain `pending` until it is replaced.
+5. Setup then attaches the hostname, retries validation, and prints `active` or `pending`. Certificate issuance and DNS propagation can take several minutes.
+6. `SITE_URL` in `wrangler.toml` is set to `https://your.domain` before the first deploy.
+
+## Troubleshooting
+
+Setup stops with a checklist and a bilingual note when a check fails. The note names the step, a dashboard link that includes the account id, what to change, and the rerun command. The API token stays in `CLOUDFLARE_API_TOKEN` and is never printed. Add `--debug` for a redacted stack trace. Progress is stored in gitignored `.cf-cms-setup.json`, so a rerun continues.
+
+| What you see | What to do |
+| --- | --- |
+| `✗` R2 is not enabled, error 10042 | Open `https://dash.cloudflare.com/<account-id>/r2/overview` and enable R2. Some accounts need a payment method on file first. The free tier still applies afterward. Rerun the printed command. |
+| Token rejected, error 10000 | Create a new token with the scopes in [API token scopes](#api-token-scopes). Export `CLOUDFLARE_API_TOKEN` and rerun. |
+| Missing permission, error 9109 | The checklist names the probe that failed. Add Account Settings Read, Pages Edit, D1 Edit, and Workers R2 Storage Edit. Add Zone Read and DNS Edit when you use a domain. |
+| D1, R2, or Pages already exists | Rerun. The same names are reused. Pass `--database-id <uuid>` only when you want a specific database. |
+| D1 database limit | Delete an unused database at `https://dash.cloudflare.com/<account-id>/workers/d1`, then rerun. |
+| Pages project name taken | Choose another `--project` value. The name is already used somewhere this token cannot reuse. |
+| Several accounts | Copy an id from the printed list and rerun with `--account-id`. |
+| Zone missing | Add the site to this account, or rerun with `--skip-domain` to stay on `<project>.pages.dev`. |
+| Domain stays `pending` | Read the printed A, AAAA, and CNAME records. Rerun with `--replace-dns` only after you accept replacing them with a proxied CNAME to `<project>.pages.dev`. SSL can still take several minutes once DNS is right. |
+| Network error | Check connectivity to `api.cloudflare.com` and rerun. Finished steps are skipped. |
+| Sample posts | A new database is seeded once. Later reruns leave posts in place. `--seed` loads the sample again and deletes existing posts, tags, and translations. `--skip-seed` leaves a new database empty. |
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+./scripts/setup.sh --yes --project cf-cms --domain blog.example.com --account-id <account-id>
+```
 
 ## Prefab templates
 
@@ -152,12 +177,31 @@ Paper, Ink, and Terminal are the original CF CMS layouts. In Template settings, 
 CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 
 1. Cloudflare 免费套餐：Pages、D1、R2、Workers AI，不必另租服务器。
-2. 一条脚本部署：准备域名和 Cloudflare API token，执行 `./scripts/setup.sh`。
+2. 一条脚本部署：准备域名和 Cloudflare API token，执行 `./scripts/setup.sh`。Token 只能看到一个账号时会自动填入 account id。R2 需先在仪表盘开通。已有的 D1、R2、Pages 会复用。未提供管理员密码时，随机密码写入 `.dev.vars`，不会打印出来。
 3. 给 Agent 用：原生 MCP，把上面的中文句子贴进客户端即可。
 4. 预制主题：个人技术博客、生活方式、传统企业首页、科技公司首页，各两套。
 5. 一键视觉套件：按当前模板生成配套标志和主题色。
 
 另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、标签和分享链接设置。示例站点名是 Field Notes。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
+
+### 故障排查
+
+安装脚本会先打印预检清单（`✓` / `✗`）。有 `✗` 时不会创建资源。失败说明同时给出中文和 English：哪一步、原因、带 account id 的仪表盘链接、处理办法，以及重跑命令。Token 放在环境变量 `CLOUDFLARE_API_TOKEN` 里，不会出现在命令或输出中。加 `--debug` 才会打印去掉密钥后的堆栈。进度写在被 git 忽略的 `.cf-cms-setup.json`，重跑会接着做。
+
+- **R2 未开通（错误 10042）。** 打开 `https://dash.cloudflare.com/<account-id>/r2/overview` 开通 R2。有的账号要先添加付款方式，开通后仍可走免费额度。然后重跑。
+- **Token 无效（错误 10000）或权限不足（错误 9109）。** 按上面的权限表补齐：Account Settings 读取、Pages 编辑、D1 编辑、R2 编辑。要绑域名时再加上 Zone 读取和 DNS 编辑。
+- **同名资源已存在。** 直接重跑。同名 D1、R2、Pages 会复用，迁移可以重复执行。
+- **D1 数量到上限。** 在 `https://dash.cloudflare.com/<account-id>/workers/d1` 删掉不用的库，再重跑。
+- **Pages 项目名被占用。** 换一个 `--project`。
+- **多个账号。** 从清单里选一个 id，用 `--account-id` 重跑。
+- **域名一直 pending。** 主机名上如果还有旧的 A、AAAA 或 CNAME，脚本会列出来并且默认不删除。确认可以改指向后，加 `--replace-dns` 重跑（交互模式下回答 `y` 也可以）。它会写成指向 `<project>.pages.dev` 的橙色云 CNAME，然后重试验证。证书和解析可能还要几分钟。`--yes` 本身不会改 DNS。
+- **网络错误。** 确认能访问 Cloudflare API 后重跑。
+- **示例文章。** 只有新建的数据库会写入示例文章。之后重跑不会再写。`--seed` 会删除已有文章、标签和译文并重新写入。`--skip-seed` 则连新库也不写入。
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+./scripts/setup.sh --yes --project cf-cms --domain blog.example.com --account-id <account-id>
+```
 
 ## Publishing this folder
 

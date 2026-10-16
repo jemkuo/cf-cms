@@ -11,7 +11,7 @@ if (!readme.includes(onboarding.en) || !readme.includes(onboarding.zh)) {
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === '.wrangler' || name === '.git' || name === '.dev.vars' || name === '.env') continue
+    if (name === 'node_modules' || name === '.wrangler' || name === '.git' || name === '.dev.vars' || name === '.env' || name === '.cf-cms-setup.json') continue
     const path = join(dir, name)
     const stat = statSync(path)
     if (stat.isDirectory()) walk(path, out)

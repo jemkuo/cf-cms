@@ -1,6 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+.cf-cms-setup.json
 .env
 .env.*
 !.env.example
