@@ -8,6 +8,7 @@ export type Category = (typeof CATEGORIES)[number]
 
 export type Engine = 'human' | 'workers-ai' | 'fallback'
 export type PostStatus = 'draft' | 'published'
+export type PostVisibility = 'draft' | 'scheduled' | 'live'
 
 export type Env = {
   DB: D1Database
@@ -127,6 +128,7 @@ export type AdminListItem = {
   sourceLang: Lang
   updatedAt: string
   publishedAt: string | null
+  visibility: PostVisibility
   title: string
   translateNote: string
   langs: { lang: Lang; ready: boolean; engine: Engine }[]

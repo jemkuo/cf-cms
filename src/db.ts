@@ -1,4 +1,5 @@
 import { EMPTY_POST_META, cleanPath, parsePostMeta, type PostMeta } from './config'
+import { liveSql, publicCacheControl, visibilityOf } from './schedule.mjs'
 import { TAG_NAME_INSERT_SQL } from './tag-attach.mjs'
 import { renderMarkdown } from './md'
 import { copy } from './i18n'
@@ -139,11 +140,13 @@ export async function listPublished(
   lang: Lang,
   options: { limit: number; offset: number; tag?: string; category?: string },
 ): Promise<{ posts: PostCard[]; total: number }> {
-  const where = [`p.status = 'published'`, `t.lang = ?`, `t.ready = 1`]
-  const binds: (string | number)[] = [lang]
+  const now = nowIso()
+  const where = [liveSql('p'), `t.lang = ?`, `t.ready = 1`]
+  const binds: (string | number)[] = [now, lang]
   let join = ''
   if (options.tag) {
-    join = 'JOIN post_tags filter_tag ON filter_tag.post_id = p.id AND filter_tag.tag_slug = ?'
+    join = 'JOIN post_tags filter_tag ON filter_tag.post_id = p.id'
+    where.push('filter_tag.tag_slug = ?')
     binds.push(options.tag)
   }
   if (options.category) {
@@ -189,7 +192,7 @@ export async function listTagCloud(
     .prepare(
       `SELECT tg.slug, COALESCE(tt.name, tg.slug) AS name, COUNT(*) AS n
        FROM post_tags pt
-       JOIN posts p ON p.id = pt.post_id AND p.status = 'published'
+       JOIN posts p ON p.id = pt.post_id AND ${liveSql('p')}
        JOIN translations tr ON tr.post_id = p.id AND tr.lang = ? AND tr.ready = 1
        JOIN tags tg ON tg.slug = pt.tag_slug
        LEFT JOIN tag_translations tt ON tt.tag_slug = tg.slug AND tt.lang = ?
@@ -197,7 +200,7 @@ export async function listTagCloud(
        ORDER BY n DESC, tg.slug
        LIMIT 24`,
     )
-    .bind(lang, lang)
+    .bind(nowIso(), lang, lang)
     .all<{ slug: string; name: string; n: number }>()
   return results.map((row) => ({ slug: row.slug, name: row.name, count: row.n }))
 }
@@ -238,15 +241,15 @@ export async function getArticle(
   preview: boolean,
 ): Promise<Article | null> {
   const ready = preview ? '' : 'AND t.ready = 1'
-  const status = preview ? '' : `AND p.status = 'published'`
+  const gate = preview ? '' : `AND ${liveSql('p')}`
   const row = await db
     .prepare(
       `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, t.keywords, t.og_image, p.meta_json
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.lang = ? ${ready}
-       WHERE p.slug = ? ${status}`,
+       WHERE p.slug = ? ${gate}`,
     )
-    .bind(lang, slug)
+    .bind(...(preview ? [lang, slug] : [lang, slug, nowIso()]))
     .first<ArticleRow>()
   if (!row) return null
   const [tags, langs] = await Promise.all([
@@ -273,9 +276,9 @@ export async function publishedSource(db: D1Database, slug: string): Promise<Lan
     .prepare(
       `SELECT p.source_lang
        FROM posts p
-       WHERE p.slug = ? AND p.status = 'published'`,
+       WHERE p.slug = ? AND ${liveSql('p')}`,
     )
-    .bind(slug)
+    .bind(slug, nowIso())
     .first<{ source_lang: string }>()
   if (!row || !isLang(row.source_lang)) return null
   return row.source_lang
@@ -287,11 +290,11 @@ export async function listFeed(db: D1Database, lang: Lang): Promise<Article[]> {
       `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, t.keywords, t.og_image, p.meta_json
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.lang = ? AND t.ready = 1
-       WHERE p.status = 'published'
+       WHERE ${liveSql('p')}
        ORDER BY p.published_at DESC
        LIMIT 40`,
     )
-    .bind(lang)
+    .bind(lang, nowIso())
     .all<ArticleRow>()
   const ids = results.map((row) => row.id)
   const [tags, langs] = await Promise.all([tagsFor(db, ids, lang), langsFor(db, ids, true)])
@@ -328,9 +331,10 @@ export async function listLlms(db: D1Database): Promise<LlmsRow[]> {
       `SELECT p.slug, p.category, p.updated_at, t.lang, t.title, t.description, t.summary, t.body_md, t.faq_json
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.ready = 1
-       WHERE p.status = 'published'
+       WHERE ${liveSql('p')}
        ORDER BY p.published_at DESC, t.lang`,
     )
+    .bind(nowIso())
     .all<{
       slug: string
       category: string
@@ -373,9 +377,10 @@ export async function sitemapPosts(db: D1Database): Promise<SitemapPost[]> {
       `SELECT p.slug, p.category, p.updated_at, t.lang
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.ready = 1
-       WHERE p.status = 'published'
+       WHERE ${liveSql('p')}
        ORDER BY p.published_at DESC`,
     )
+    .bind(nowIso())
     .all<{ slug: string; category: string; updated_at: string; lang: string }>()
   const map = new Map<string, SitemapPost>()
   for (const row of results) {
@@ -457,17 +462,20 @@ export async function adminList(db: D1Database): Promise<AdminListItem[]> {
       title: string | null
     }>()
   const map = new Map<string, AdminListItem>()
+  const now = nowIso()
   for (const row of results) {
     let item = map.get(row.id)
     if (!item) {
       const sourceLang = isLang(row.source_lang) ? row.source_lang : 'zh'
+      const status = isStatus(row.status) ? row.status : 'draft'
       item = {
         id: row.id,
         slug: row.slug,
-        status: isStatus(row.status) ? row.status : 'draft',
+        status,
         sourceLang,
         updatedAt: row.updated_at,
         publishedAt: row.published_at,
+        visibility: visibilityOf(status, row.published_at, now),
         title: row.slug,
         translateNote: row.translate_note || '',
         langs: [],
@@ -710,19 +718,46 @@ export async function setTranslateNote(db: D1Database, id: string, note: string)
   await db.prepare(`UPDATE posts SET translate_note = ? WHERE id = ?`).bind(note, id).run()
 }
 
-export async function setPostStatus(db: D1Database, id: string, status: 'draft' | 'published'): Promise<boolean> {
+export async function setPostStatus(
+  db: D1Database,
+  id: string,
+  status: 'draft' | 'published',
+  publishedAt?: string | null,
+): Promise<boolean> {
   const row = await db
     .prepare(`SELECT published_at FROM posts WHERE id = ?`)
     .bind(id)
     .first<{ published_at: string | null }>()
   if (!row) return false
   const now = nowIso()
-  const publishedAt = status === 'published' ? row.published_at || now : row.published_at
+  let next = row.published_at
+  if (status === 'published') {
+    if (typeof publishedAt === 'string' && publishedAt) next = publishedAt
+    else if (!row.published_at || Date.parse(row.published_at) > Date.parse(now)) next = now
+  }
   await db
     .prepare(`UPDATE posts SET status = ?, published_at = ?, updated_at = ? WHERE id = ?`)
-    .bind(status, publishedAt, now, id)
+    .bind(status, next, now, id)
     .run()
   return true
+}
+
+export async function nextScheduledAt(db: D1Database, now: string): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT MIN(published_at) AS next
+       FROM posts
+       WHERE status = 'published' AND published_at IS NOT NULL AND published_at > ?`,
+    )
+    .bind(now)
+    .first<{ next: string | null }>()
+  return row?.next || null
+}
+
+export async function responseCacheControl(db: D1Database, capSeconds: number, swrSeconds = 0): Promise<string> {
+  const now = nowIso()
+  const next = await nextScheduledAt(db, now)
+  return publicCacheControl(now, next, capSeconds, swrSeconds)
 }
 
 export async function deletePost(db: D1Database, id: string): Promise<void> {

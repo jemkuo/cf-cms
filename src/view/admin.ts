@@ -2,11 +2,12 @@ import { html } from 'hono/html'
 import type { Channel, SiteConfig } from '../config'
 import { type ParsedPost } from '../form'
 import { publishBlockers } from '../publish-gate.mjs'
+import { formatWall, formatWallLabel, isLive, zoneLabel } from '../schedule.mjs'
 import { LANG_META, formatDate } from '../i18n'
 import type { AdminListItem, AdminPost, Env, Lang } from '../types'
 import { LANGS } from '../types'
 import { adminPrefix } from '../safepath'
-import { coverPublicPath, formatTagInput } from '../text'
+import { coverPublicPath, formatTagInput, nowIso } from '../text'
 import { shell } from './layout'
 
 const ERRORS: Record<string, string> = {
@@ -28,6 +29,8 @@ const OKS: Record<string, string> = {
   saved: 'Saved.',
   translated: 'Translation finished.',
   queued: 'Translation queued. It continues in the background and does not copy the source text into a failed language.',
+  scheduled: 'Scheduled. It stays private until the go-live time, then appears on its own.',
+  published: 'Published. It is live now.',
   uploaded: 'Image uploaded.',
 }
 
@@ -95,7 +98,11 @@ export function listView(base: Base, posts: AdminListItem[], message?: string) {
               <tbody>
                 ${posts.map((post) => html`<tr>
                   <td><a href="/admin/posts/${post.id}">${post.title}</a><div class="muted">${post.slug}</div></td>
-                  <td>${post.status === 'published' ? 'Published' : 'Draft'}</td>
+                  <td>${post.visibility === 'scheduled' ? 'Scheduled' : post.status === 'published' ? 'Published' : 'Draft'}${
+                    post.visibility === 'scheduled' && post.publishedAt
+                      ? html`<div class="muted">${formatWallLabel(post.publishedAt, base.settings.timezone)}</div>`
+                      : ''
+                  }</td>
                   <td>${LANGS.map((lang) => {
                     const found = post.langs.find((item) => item.lang === lang)
                     const cls = !found ? 'badge' : found.ready ? 'badge ok' : 'badge warn'
@@ -126,6 +133,12 @@ export function editorView(base: Base, input: EditorInput) {
   const meta = value?.meta || post?.meta
   const gateOn = base.settings.require_all_languages
   const currentStatus = value?.status || post?.status || 'draft'
+  const clock = nowIso()
+  const zone = base.settings.timezone
+  const scheduled = Boolean(post && post.status === 'published' && post.publishedAt && !isLive(post.status, post.publishedAt, clock))
+  const live = Boolean(post && post.status === 'published' && !scheduled)
+  const wallValue = value?.publishAt || (scheduled && post?.publishedAt ? formatWall(post.publishedAt, zone) : '')
+  const stateLabel = scheduled ? 'Scheduled' : currentStatus === 'published' ? 'Published' : 'Draft'
   const readiness = LANGS.map((lang) => {
     const fromDraft = value?.translations[lang]
     const fromPost = post?.translations.find((item) => item.lang === lang)
@@ -178,7 +191,7 @@ export function editorView(base: Base, input: EditorInput) {
           </label>
           <label>
             <span class="lbl">Status</span>
-            <input value="${currentStatus === 'published' ? 'Published' : 'Draft'}" readonly>
+            <input value="${stateLabel}" readonly>
           </label>
           <label>
             <span class="lbl">Channel</span>
@@ -237,7 +250,7 @@ export function editorView(base: Base, input: EditorInput) {
           })}
         </div>
         ${gateOn
-          ? html`<p class="muted">Publish stays off until zh, en, ja, es, and ar are ready. 五种语言都就绪后才能发布。</p>`
+          ? html`<p class="muted">Publish and Schedule stay off until zh, en, ja, es, and ar are ready. 五种语言都就绪后才能发布或定时。All languages go live together.</p>`
           : html`<p class="muted">require_all_languages is off, so Publish does not wait for every language.</p>`}
         <div class="lang-switcher">
           ${LANGS.map((lang) => html`<input type="radio" name="lang_tab" id="tab-${lang}" value="${lang}" ${lang === sourceLang ? 'checked' : ''}>`)}
@@ -252,31 +265,51 @@ export function editorView(base: Base, input: EditorInput) {
           <input type="checkbox" name="auto_translate">
           <span>On save, queue Workers AI for languages that have no translation yet</span>
         </label>
+        <fieldset class="stack">
+          <legend>Publish</legend>
+          <p class="muted">Times use ${zoneLabel(zone)}. Publish now is immediate. Schedule stays private until that minute, then goes live with no redeploy.</p>
+          ${scheduled && post?.publishedAt ? html`<p class="muted">Scheduled for ${formatWallLabel(post.publishedAt, zone)}.</p>` : ''}
+          <div class="publish-choice">
+            <label class="check">
+              <input type="radio" name="publish_choice" value="now" ${scheduled ? '' : 'checked'}>
+              <span>Publish now</span>
+            </label>
+            <label class="check">
+              <input type="radio" name="publish_choice" value="schedule" ${scheduled ? 'checked' : ''}>
+              <span>Schedule</span>
+            </label>
+          </div>
+          <label>
+            <span class="lbl">Go-live · ${zoneLabel(zone)}</span>
+            <input type="datetime-local" name="publish_at" step="60" value="${wallValue}">
+          </label>
+        </fieldset>
         <input type="hidden" name="status" value="${currentStatus}">
-        <div class="form-actions" data-publish-gate="${gateOn ? 'on' : 'off'}" data-source="${sourceLang}">
+          <div class="form-actions" data-publish-gate="${gateOn ? 'on' : 'off'}" data-source="${sourceLang}">
           <button type="submit" name="action" value="save">Save</button>
-          <button type="submit" name="action" value="publish" data-publish ${gateOn && blockers.length ? 'disabled' : ''}>Publish</button>
-          ${currentStatus === 'published' ? html`<button class="ghost" type="submit" name="action" value="unpublish">Unpublish</button>` : ''}
+          <button type="submit" name="action" value="apply" data-publish ${gateOn && blockers.length ? 'disabled' : ''}>Publish</button>
+          ${scheduled ? html`<button class="ghost" type="submit" name="action" value="unschedule">Unschedule</button>` : ''}
+          ${live ? html`<button class="ghost" type="submit" name="action" value="unpublish">Unpublish</button>` : ''}
           ${post ? html`<a class="button ghost" href="/admin/preview/${post.id}/${sourceLang}">Preview source</a>` : ''}
         </div>
         <script nonce="${base.nonce}">
           (function () {
             var gate = document.querySelector('[data-publish-gate]')
             if (!gate) return
-            var button = gate.querySelector('[data-publish]')
-            if (!button) return
+            var buttons = gate.querySelectorAll('[data-publish]')
+            if (!buttons.length) return
             var required = gate.getAttribute('data-publish-gate') === 'on'
             var source = gate.getAttribute('data-source')
             var langs = ['zh', 'en', 'ja', 'es', 'ar']
             function sync() {
-              if (!required) { button.disabled = false; return }
-              button.disabled = !langs.every(function (lang) {
+              var blocked = required && !langs.every(function (lang) {
                 var title = document.querySelector('[name="title_' + lang + '"]')
                 var body = document.querySelector('[name="body_' + lang + '"]')
                 var ready = document.querySelector('[name="ready_' + lang + '"]')
                 var readyOk = lang === source || (ready && ready.checked)
                 return title && body && title.value.trim() && body.value.trim() && readyOk
               })
+              buttons.forEach(function (button) { button.disabled = blocked })
             }
             document.addEventListener('input', sync)
             document.addEventListener('change', sync)

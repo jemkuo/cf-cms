@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Hono } from 'hono'
 import { channelLabel } from '../config'
-import { PAGE_SIZE, getArticle, listPublished, listTagCloud, publishedSource, schemaReady, tagExists, tagName } from '../db'
+import { PAGE_SIZE, getArticle, listPublished, listTagCloud, publishedSource, responseCacheControl, schemaReady, tagExists, tagName } from '../db'
 import { llmsTxt, robotsTxt, rss, sitemapIndex, sitemapLang } from '../feeds'
 import { COPY } from '../i18n'
 import { isSchemaError } from '../site'
@@ -20,8 +20,10 @@ function langParam(c: Context<AppEnv>): Lang | null {
 }
 
 async function send(c: Context<AppEnv>, body: ReturnType<typeof homeView>, status = 200) {
+  const control = status === 200 ? await responseCacheControl(c.env.DB, 60, 600) : 'no-store'
   return c.html(body, status as 200, {
-    'cache-control': status === 200 ? 'public, max-age=60, stale-while-revalidate=600' : 'no-store',
+    'cache-control': control,
+    'cdn-cache-control': control,
   })
 }
 
@@ -206,5 +208,5 @@ function langFromPath(path: string): Lang | null {
 }
 
 function missing(c: Context<AppEnv>, lang: Lang) {
-  return c.html(notFoundView(base(c, lang)), 404, { 'cache-control': 'no-store' })
+  return c.html(notFoundView(base(c, lang)), 404, { 'cache-control': 'no-store', 'cdn-cache-control': 'no-store' })
 }

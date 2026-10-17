@@ -12,6 +12,7 @@ import {
   type TagAdmin,
 } from '../config'
 import { HEAD_PRESETS } from '../head-meta.mjs'
+import { zoneLabel } from '../schedule.mjs'
 import { hasLogo, logoHtml, markText } from '../kit'
 import { LANG_META } from '../i18n'
 import { NICHE_ORDER, presetById, presetsInNiche } from '../templates'
@@ -182,9 +183,14 @@ export function metaView(base: Base, ok?: string, error?: string) {
           <select name="twitterCard">${TWITTER_CARDS.map((id) => html`<option value="${id}" ${value.twitterCard === id ? 'selected' : ''}>${id}</option>`)}</select>
         </label>
         <label><span class="lbl">Robots</span><input name="robots" value="${value.robots}"></label>
+        <label>
+          <span class="lbl">Timezone · ${zoneLabel(base.settings.timezone)}</span>
+          <input name="timezone" value="${base.settings.timezone}" placeholder="UTC" autocomplete="off">
+        </label>
+        <p class="muted">IANA name, used for scheduled publishing. Missing or invalid values are UTC. Post times in the editor are entered in this zone.</p>
         <label class="check">
           <input type="checkbox" name="require_all_languages" ${base.settings.require_all_languages ? 'checked' : ''}>
-          <span>Require all 5 languages (zh, en, ja, es, ar) before a post can be published</span>
+          <span>Require all 5 languages (zh, en, ja, es, ar) before a post can be published or scheduled</span>
         </label>
         <button type="submit">Save metadata</button>
       </form>

@@ -12,6 +12,8 @@ export type FormError = 'slug' | 'source' | 'cover' | 'author' | 'body'
 export type ParsedPost = {
   slug: string
   status: 'draft' | 'published'
+  action: 'save' | 'publish' | 'schedule' | 'unpublish' | 'unschedule'
+  publishAt: string
   category: string
   meta: PostMeta
   coverKey: string | null
@@ -98,14 +100,22 @@ export function parsePostForm(body: Record<string, unknown>): { ok: true; value:
     keywords: bag.meta_keywords || '',
     ogImage: bag.meta_og || '',
   })
+  let action: ParsedPost['action'] = 'save'
+  if (bag.action === 'publish' || bag.action === 'schedule' || bag.action === 'unpublish' || bag.action === 'unschedule') {
+    action = bag.action
+  } else if (bag.action === 'apply') {
+    action = bag.publish_choice === 'schedule' ? 'schedule' : 'publish'
+  }
   let status = isStatus(bag.status || '') ? bag.status : 'draft'
-  if (bag.action === 'publish') status = 'published'
-  if (bag.action === 'unpublish') status = 'draft'
+  if (action === 'publish' || action === 'schedule') status = 'published'
+  if (action === 'unpublish' || action === 'unschedule') status = 'draft'
   return {
     ok: true,
     value: {
       slug,
       status: status === 'published' ? 'published' : 'draft',
+      action,
+      publishAt: (bag.publish_at || '').trim(),
       category,
       meta,
       coverKey: cover,

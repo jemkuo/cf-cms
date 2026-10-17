@@ -21,6 +21,7 @@ import { presetById } from '../templates'
 import type { AppEnv } from '../types'
 import { bagFromBody } from '../form'
 import { HEAD_PRESETS, parseHeadMeta } from '../head-meta.mjs'
+import { canonicalTimeZone } from '../schedule.mjs'
 import {
   brandView,
   channelsView,
@@ -140,8 +141,12 @@ export function mountSettings(app: Hono<AppEnv>) {
   app.post('/admin/meta', async (c) => {
     const bag = bagFromBody(await c.req.parseBody())
     const meta = parseSiteMeta(bag)
+    const zoneInput = (bag.timezone || '').trim()
+    const zone = zoneInput ? canonicalTimeZone(zoneInput) : 'UTC'
+    if (!zone) return page(c, metaView(baseOf(c), undefined, 'Timezone must be an IANA name such as UTC or Asia/Shanghai.'), 400)
     await saveSettings(c.env.DB, 'meta', meta)
     await saveSettings(c.env.DB, 'require_all_languages', bag.require_all_languages === 'on')
+    await saveSettings(c.env.DB, 'timezone', zone)
     await refresh(c)
     return page(c, metaView(baseOf(c), 'Metadata saved.'))
   })

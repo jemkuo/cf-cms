@@ -31,6 +31,7 @@ import {
 } from '../db'
 import { enqueueTranslations, translationStatus } from '../jobs'
 import { allLanguagesOption, publishBlockers, refusalText } from '../publish-gate.mjs'
+import { assertTimeZone, matchesListStatus, parsePublishAt, visibilityOf } from '../schedule.mjs'
 import { parseHeadMeta } from '../head-meta.mjs'
 import { imageKey, sniffImage } from '../media'
 import { originOf, siteName } from '../site'
@@ -93,10 +94,13 @@ async function requirePost(env: Env, args: Record<string, unknown>) {
 }
 
 function publicPost(post: NonNullable<Awaited<ReturnType<typeof getAdminPost>>>) {
+  const visibility = visibilityOf(post.status, post.publishedAt, nowIso())
   return {
     id: post.id,
     slug: post.slug,
     status: post.status,
+    visibility,
+    scheduled: visibility === 'scheduled',
     channel: post.category,
     coverKey: post.coverKey,
     cover: publicCover(post.coverKey),
@@ -104,6 +108,7 @@ function publicPost(post: NonNullable<Awaited<ReturnType<typeof getAdminPost>>>)
     authorX: post.authorX,
     sourceLang: post.sourceLang,
     publishedAt: post.publishedAt,
+    publishAt: post.publishedAt,
     updatedAt: post.updatedAt,
     meta: post.meta,
     tags: post.tags,
@@ -265,14 +270,19 @@ async function writeFromArgs(env: Env, existing: Awaited<ReturnType<typeof getAd
   const id = post?.id ?? crypto.randomUUID()
   const owner = await slugOwner(env.DB, slug)
   if (owner && owner !== id) throw new Error('Slug is already used')
-  const status = args.status === 'published' || args.status === 'draft' ? args.status : post?.status || 'draft'
+  let status = args.status === 'published' || args.status === 'draft' ? args.status : post?.status || 'draft'
   const channel = slugOk(str(args.channel).trim().toLowerCase())
     ? str(args.channel).trim().toLowerCase()
     : post?.category || 'notes'
   const now = nowIso()
   const meta = args.meta ? parsePostMeta({ ...(post?.meta || {}), ...(args.meta as object) }) : post?.meta || parsePostMeta({})
   let publishedAt = post?.publishedAt ?? null
-  if (status === 'published' && !publishedAt) publishedAt = now
+  const rawAt = args.publish_at !== undefined ? args.publish_at : args.publishAt
+  if (rawAt !== undefined && String(rawAt).trim() !== '') {
+    if (args.status === 'draft') throw new Error('publish_at schedules a post. Omit it for a draft, or set status to published.')
+    publishedAt = parsePublishAt(rawAt, now)
+    status = 'published'
+  } else if (status === 'published' && !publishedAt) publishedAt = now
   const tags = args.tags ? tagsFrom(args, sourceLang) : (post?.tags || []).map((tag) => ({ slug: tag.slug }))
   const incoming = translationsFromArgs(args, post, post?.sourceLang || sourceLang)
   if (!incoming.length && !post) throw new Error('Title and body are required for the source language')
@@ -342,6 +352,7 @@ export const TOOLS: Tool[] = [
         counts: {
           posts: posts.length,
           drafts: posts.filter((item) => item.status === 'draft').length,
+          scheduled: posts.filter((item) => item.visibility === 'scheduled').length,
           channels: channels.length,
           tags: tags.length,
         },
@@ -350,27 +361,31 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'list_posts',
-    description: 'List posts. Filter with status draft, published, or any.',
+    description: 'List posts. Filter with status draft, published, scheduled, or any. published includes posts that are already live and posts waiting for a future publishAt. scheduled is published with publishAt still in the future. Each row includes visibility, scheduled, and publishAt.',
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['draft', 'published', 'any'] },
+        status: { type: 'string', enum: ['draft', 'published', 'scheduled', 'any'] },
         limit: { type: 'number' },
       },
     },
     async run(env, args) {
       const status = str(args.status) || 'any'
       const limit = Math.max(1, Math.min(100, Number(args.limit) || 50))
+      const now = nowIso()
       const rows = await adminList(env.DB)
       return {
         posts: rows
-          .filter((item) => status === 'any' || item.status === status)
+          .filter((item) => matchesListStatus(status, item.status, item.publishedAt, now))
           .slice(0, limit)
           .map((item) => ({
             id: item.id,
             slug: item.slug,
             title: item.title,
             status: item.status,
+            visibility: item.visibility,
+            scheduled: item.visibility === 'scheduled',
+            publishAt: item.publishedAt,
             sourceLang: item.sourceLang,
             updatedAt: item.updatedAt,
             langs: item.langs,
@@ -380,7 +395,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_post',
-    description: 'Read one post, including cover, translations, per-language keywords and errors, tags, and translation job status.',
+    description: 'Read one post, including cover, translations, per-language keywords and errors, tags, translation job status, visibility, and publishAt. visibility is draft, scheduled, or live.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' }, slug: { type: 'string' } },
@@ -391,7 +406,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'create_post',
-    description: 'Create a draft or published post. Pass translations for zh, en, ja, es, and ar to save every language in one write. Tags are attached by slug and never renamed. Set translate true to queue Workers AI for languages that are still empty.',
+    description: 'Create a draft or published post. Pass translations for zh, en, ja, es, and ar to save every language in one write. Tags are attached by slug and never renamed. Set translate true to queue Workers AI for languages that are still empty. Optional publish_at is ISO 8601 with an offset or Z and schedules the post; omitting it with status published goes live now.',
     inputSchema: {
       type: 'object',
       required: ['slug'],
@@ -412,7 +427,8 @@ export const TOOLS: Tool[] = [
         meta: postMetaSchema,
         translations: { type: 'object', additionalProperties: translationSchema },
         translate: { type: 'boolean' },
-        all_languages: { type: 'boolean', description: 'When status is published, require every language. Defaults to the require_all_languages setting.' },
+        all_languages: { type: 'boolean', description: 'When status is published or publish_at is set, require every language. Defaults to the require_all_languages setting.' },
+        publish_at: { type: 'string', description: 'ISO 8601 with a timezone offset or Z, for example 2026-10-18T09:30:00+08:00. Must be in the future. Schedules the post; all languages go live together.' },
       },
     },
     async run(env, args) {
@@ -421,7 +437,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'update_post',
-    description: 'Update a post by id or slug. translations saves every included language in one write and does not rename tags. Omit fields you want to keep. meta is merged.',
+    description: 'Update a post by id or slug. translations saves every included language in one write and does not rename tags. Omit fields you want to keep. meta is merged. publish_at reschedules (ISO 8601 with an offset or Z). Omitting publish_at keeps an existing go-live time. publish_post without publish_at is what makes a scheduled post live now.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -445,6 +461,7 @@ export const TOOLS: Tool[] = [
         locked: { type: 'boolean' },
         translate: { type: 'boolean' },
         all_languages: { type: 'boolean' },
+        publish_at: { type: 'string', description: 'ISO 8601 with a timezone offset or Z. Future only. Sets status to published and keeps the post private until that time.' },
       },
     },
     async run(env, args) {
@@ -453,24 +470,32 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'publish_post',
-    description: 'Publish a post so every ready language goes live together. Refuses when all_languages is true and any of zh, en, ja, es, ar is missing or not ready. all_languages defaults to the require_all_languages setting (missing means true).',
+    description: 'Publish a post so every ready language goes live together. Omit publish_at to go live now, which also releases a scheduled post. Pass publish_at (ISO 8601 with an offset or Z) to schedule one shared go-live time. Refuses when all_languages is true and any of zh, en, ja, es, ar is missing or not ready. all_languages defaults to the require_all_languages setting (missing means true).',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
         slug: { type: 'string' },
         all_languages: { type: 'boolean' },
+        publish_at: { type: 'string', description: 'Optional ISO 8601 with a timezone offset or Z. Future only. Schedules instead of publishing now.' },
       },
     },
     async run(env, args) {
       const post = await requirePost(env, args)
+      const rawAt = args.publish_at !== undefined ? args.publish_at : args.publishAt
+      const when = rawAt !== undefined && String(rawAt).trim() !== '' ? parsePublishAt(rawAt, nowIso()) : ''
       const config = await loadConfig(env.DB)
       if (allLanguagesOption(args.all_languages, config.require_all_languages)) {
         const blockers = publishBlockers(post.translations)
         if (blockers.length) throw new Error(refusalText(blockers))
       }
-      await setPostStatus(env.DB, post.id, 'published')
-      return { id: post.id, slug: post.slug, status: 'published', languages: post.translations.filter((item) => item.ready).map((item) => item.lang) }
+      await setPostStatus(env.DB, post.id, 'published', when || undefined)
+      const saved = await getAdminPost(env.DB, post.id)
+      if (!saved) throw new Error('Publish failed')
+      return {
+        ...publicPost(saved),
+        languages: saved.translations.filter((item) => item.ready).map((item) => item.lang),
+      }
     },
   },
   {
@@ -518,7 +543,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'translation_status',
-    description: 'Read per-language readiness and background translation jobs for a post.',
+    description: 'Read per-language readiness, background translation jobs, and whether the post is draft, scheduled, or live.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' }, slug: { type: 'string' } } },
     async run(env, args) {
       const post = await requirePost(env, args)
@@ -623,19 +648,21 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_settings',
-    description: 'Read template, layout, brand, site meta, share links, require_all_languages, and head_meta. Missing require_all_languages means true. Missing head_meta means no extra tags.',
+    description: 'Read template, layout, brand, site meta, share links, require_all_languages, head_meta, and timezone. Missing require_all_languages means true. Missing head_meta means no extra tags. Missing timezone means UTC.',
     inputSchema: {
       type: 'object',
       properties: {
-        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'all'] },
+        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'timezone', 'all'] },
       },
     },
     async run(env, args) {
       const config = await loadConfig(env.DB)
       const section = str(args.section) || 'all'
       if (section === 'all') return config
+      if (section === 'timezone') return { timezone: config.timezone }
       if (section === 'head_meta') return { head_meta: config.head_meta, require_all_languages: config.require_all_languages }
-      if (section === 'template' || section === 'layout' || section === 'meta' || section === 'share' || section === 'brand') {
+      if (section === 'meta') return { meta: config.meta, timezone: config.timezone }
+      if (section === 'template' || section === 'layout' || section === 'share' || section === 'brand') {
         return { [section]: config[section] }
       }
       throw new Error('Unknown settings section')
@@ -796,7 +823,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'update_meta',
-    description: 'Set site-wide description, title suffix, default Open Graph image, Twitter card, and robots.',
+    description: 'Set site-wide description, title suffix, default Open Graph image, Twitter card, robots, and timezone. timezone is an IANA name such as UTC or Asia/Shanghai. Missing timezone stays UTC.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -805,13 +832,15 @@ export const TOOLS: Tool[] = [
         ogImage: { type: 'string' },
         twitterCard: { type: 'string', enum: ['summary', 'summary_large_image'] },
         robots: { type: 'string' },
+        timezone: { type: 'string', description: 'IANA timezone. Default UTC. Scheduled post times in the admin are entered in this zone.' },
       },
     },
     async run(env, args) {
       const current = await loadConfig(env.DB)
       const meta = parseSiteMeta({ ...current.meta, ...args })
       await saveSettings(env.DB, 'meta', meta)
-      return meta
+      if (args.timezone !== undefined) await saveSettings(env.DB, 'timezone', assertTimeZone(args.timezone))
+      return { ...meta, timezone: (await loadConfig(env.DB)).timezone }
     },
   },
   {

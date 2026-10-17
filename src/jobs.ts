@@ -11,9 +11,10 @@ import {
   saveTranslationJob,
   writeTranslation,
 } from './db'
+import { visibilityOf } from './schedule.mjs'
 import type { Env, Faq, Lang, SaveTranslation } from './types'
 import { LANGS } from './types'
-import { isLang } from './text'
+import { isLang, nowIso } from './text'
 
 type PartialState = {
   fieldsReady?: boolean
@@ -252,9 +253,14 @@ async function commitJob(env: Env, postId: string, lang: Lang, partial: PartialS
 export async function translationStatus(env: Env, postId: string) {
   const post = await getAdminPost(env.DB, postId)
   if (!post) return null
+  const visibility = visibilityOf(post.status, post.publishedAt, nowIso())
   return {
     id: post.id,
     slug: post.slug,
+    status: post.status,
+    visibility,
+    scheduled: visibility === 'scheduled',
+    publishAt: post.publishedAt,
     jobs: await listTranslationJobs(env.DB, post.id),
     languages: post.translations.map((item) => ({
       lang: item.lang,

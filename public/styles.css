@@ -385,7 +385,7 @@ textarea.body { min-height: 16rem; font-family: var(--mono); font-size: 0.9rem; 
 .readiness { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 1rem; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 .faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
-.checks, .form-actions, .upload-row, .inline-form { display: flex; flex-wrap: wrap; gap: 0.8rem 1rem; align-items: center; }
+.checks, .form-actions, .upload-row, .inline-form, .publish-choice { display: flex; flex-wrap: wrap; gap: 0.8rem 1rem; align-items: center; }
 .check { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 0.45rem; }
 .check input { width: auto; }
 .badge {

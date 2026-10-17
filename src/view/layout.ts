@@ -44,7 +44,7 @@ function abs(origin: string, path: string): string {
 function styleHref(settings: SiteConfig): string {
   const brand = settings.brand.themeColor.replace('#', '') || 'accent'
   const token = [
-    '6',
+    '7',
     settings.template.id,
     settings.template.font,
     settings.template.accent,

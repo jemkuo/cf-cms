@@ -190,9 +190,23 @@ Save every language in one call. `excerpt` is an alias of `description`. Keyword
 
 Call `create_post` with that object, then `publish_post`. `publish_post` accepts `all_languages` (default from the setting). When the gate is on, a missing or not-ready language is refused in Chinese and English, and nothing is published. When it passes, every ready language becomes public together. `upsert_translations` writes the same map onto an existing post without changing status or tag names.
 
-The post editor uses a tab per language, a readiness badge for each of the five, and a Publish button that stays disabled until each language has a title, a body, and the public checkbox. Per-language keywords and Open Graph image fields fall back to the post fields. The public page emits `hreflang`, `meta name="keywords"`, and `og:image` from the language you are reading.
+The post editor uses a tab per language, a readiness badge for each of the five, and Publish now / Schedule buttons that stay disabled until each language has a title, a body, and the public checkbox. Schedule uses that same gate, and every language goes live together. Per-language keywords and Open Graph image fields fall back to the post fields. The public page emits `hreflang`, `meta name="keywords"`, and `og:image` from the language you are reading.
 
 `translate_post` queues the empty languages (`langs` defaults to all except the source). Long Markdown is split on headings and paragraphs. Code fences, tables, image markup, and command lines stay as written. The work continues in the background and on later requests, so a long post does not have to finish inside one request. `translation_status`, `get_post`, and `GET /<ADMIN_SAFEPATH>/admin/posts/<id>/translation-status` show the job. A failed language stores an error and an empty body. It does not store a hidden copy of the source. `get_post` also returns `coverKey` and `cover`.
+
+## Scheduled publishing
+
+Publishing still goes live immediately. That is the default for the **Publish now** button and for `publish_post` or `create_post` / `update_post` with `status: "published"` and no `publish_at`.
+
+To hold a post, set a go-live time. In the editor choose **Schedule**, enter the time, and submit. `publish_at` on `create_post`, `update_post`, or `publish_post` does the same. The value is ISO 8601 **with an offset or `Z`**, for example `2026-10-18T09:30:00+08:00`. A time with no offset is rejected. The time is stored as UTC. It must be in the future. Until that minute the post is not public: the post URL is a 404, and it is left out of lists, channels, tags, RSS, the sitemap, Article JSON-LD, Open Graph for that post, `llms.txt`, and `llms-full.txt`. There is no separate search index; those lists are the discovery surfaces and use the same rule. After the timestamp the post appears on the next request. Nothing is republished and no cron runs.
+
+The rule is `published_at <= now` at read time. A published row with an empty `published_at` stays live, so existing posts do not move. Drafts stay hidden. `require_all_languages` applies to scheduling the same way it applies to publishing. One `published_at` covers every language.
+
+Times in the editor are the site timezone. The setting key is `timezone` (IANA name, default `UTC`, missing or invalid means `UTC`). It is on **Meta** (`/<ADMIN_SAFEPATH>/admin/meta`) and on MCP `update_meta` / `get_settings`. The field shows the zone label, for example `Asia/Shanghai (GMT+8)`. The post list shows **Scheduled** and that go-live time. Unschedule returns the post to draft. Reschedule picks a new time. Publish now clears the wait and goes live.
+
+Pages Functions cannot run a scheduled Worker, so nothing depends on cron. List HTML is cached for 60 seconds with `stale-while-revalidate` only when nothing is waiting. RSS, the sitemap, and `llms.txt` stay at 300 seconds in that same case. When a post is scheduled, `Cache-Control` and `CDN-Cache-Control` use the shorter of that cap and the seconds until the next go-live, with `must-revalidate` and no stale window, so a cached page cannot outlive the minute it should appear. A not-yet-live URL is `no-store`. No new D1 migration: `posts.published_at` already exists.
+
+`list_posts` accepts `status` `draft`, `published`, `scheduled`, or `any`. `published` still includes scheduled rows. Each row, `get_post`, `publish_post`, and `translation_status` report `visibility` (`draft`, `scheduled`, or `live`), `scheduled`, and `publishAt`. Omitting `publish_at` on `update_post` keeps a go-live time that is already stored. `publish_post` without `publish_at` goes live now.
 
 ## Head tags
 
@@ -224,7 +238,7 @@ npx wrangler d1 migrations apply <database-name> --remote
 npx wrangler pages deploy public --project-name <project>
 ```
 
-`<database-name>` is the D1 database created for that site (the setup script uses `<project>-db`). The local preview database in this repo stays `cf-blogger-db` (`npm run db:migrate`). Apply the remote migration before the new code serves traffic. The migration is `migrations/0002_content_ops.sql`. It adds `translations.keywords`, `translations.og_image`, `translations.error`, and `translation_jobs`. Settings keys `require_all_languages` and `head_meta` appear when you save them; a missing key already means “require all five languages” and “no extra head tags”.
+`<database-name>` is the D1 database created for that site (the setup script uses `<project>-db`). The local preview database in this repo stays `cf-blogger-db` (`npm run db:migrate`). Apply the remote migration before the new code serves traffic. The migration is `migrations/0002_content_ops.sql`. It adds `translations.keywords`, `translations.og_image`, `translations.error`, and `translation_jobs`. Settings keys `require_all_languages` and `head_meta` appear when you save them; a missing key already means “require all five languages” and “no extra head tags”. Scheduled publishing does not add a migration. `posts.published_at` is already there. The new settings key is `timezone` (default `UTC`).
 
 ## 中文说明
 
@@ -240,6 +254,12 @@ CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 
 公开页脚最后一行是较小、较淡的 “Powered by CF CMS”（各语言都用这句英文，CF CMS 链到 GitHub 仓库）。后台页面不显示，也不会写进 JSON-LD。默认开启。版式里没有 `show_powered_by` 时仍视为开启。在 **Layout**（`/<ADMIN_SAFEPATH>/admin/layout`）取消勾选，或用 MCP `update_layout` 传入 `{ "show_powered_by": false }` 即可关掉。`get_settings` 的 `layout` 段会返回这个字段。
 
+定时发布：默认仍是立即公开。编辑器里选 **Publish now**，或调用 `publish_post`、以及 `status` 为 `published` 且不带 `publish_at` 的 `create_post` / `update_post`，文章马上上线。要等到某个时刻，就选 **Schedule**，或传入 `publish_at`。它必须是带时区偏移或 `Z` 的 ISO 8601，例如 `2026-10-18T09:30:00+08:00`，没有偏移会被拒绝，并且必须是将来的时间。库里存 UTC。到这一分钟之前，文章页是 404，列表、栏目、标签、RSS、sitemap、文章 JSON-LD、该文的 Open Graph、`llms.txt` 和 `llms-full.txt` 都不会出现它。没有单独的搜索索引，上面的列表就是发现入口，用的是同一条规则。时间一到，下一次请求就会看到，不用重新部署，也不用 cron。判断是读取时的 `published_at <= now`。已经发布且 `published_at` 为空的旧文章保持公开。`require_all_languages` 对定时和立即发布一样，五种语言同一个时间上线。
+
+后台时间用站点时区。设置键是 `timezone`（IANA 名称，默认 `UTC`，缺少或无效也是 `UTC`），在 **Meta**（`/<ADMIN_SAFEPATH>/admin/meta`），MCP 用 `update_meta` / `get_settings`。输入框旁显示时区标签，例如 `Asia/Shanghai (GMT+8)`。文章列表对未到点的文章显示 **Scheduled** 和上线时间。可以取消定时、改时间，或立即发布。Pages Functions 不能跑定时任务，所以不依赖 cron。没有待发文章时，列表 HTML 仍缓存 60 秒（含 `stale-while-revalidate`），RSS、sitemap 和 `llms.txt` 仍是 300 秒。一旦有定时文章，`Cache-Control` 和 `CDN-Cache-Control` 取该上限和距离下一次上线的秒数中较短的那个，并带 `must-revalidate`、不再使用陈旧缓存，避免列表或 sitemap 把文章拖过上线那一分钟。未到点的文章地址是 `no-store`。这次没有新的 D1 迁移。
+
+`list_posts` 的 `status` 可以是 `draft`、`published`、`scheduled` 或 `any`。`published` 仍包含已定时、尚未公开的文章。`list_posts`、`get_post`、`publish_post` 和 `translation_status` 会返回 `visibility`（`draft`、`scheduled` 或 `live`）、`scheduled` 和 `publishAt`。`update_post` 不传 `publish_at` 会保留已有的上线时间。不带 `publish_at` 的 `publish_post` 会立刻公开。
+
 每篇文章以最终版本发布：zh、en、ja、es、ar 一次写好，一起公开。`create_post` 或 `update_post` 接受 `translations`，五种语言在同一次写入里保存。`excerpt` 等同 `description`。关键词和 `og_image` 可按语言填写，留空则用文章级字段。标签只按 slug 关联，保存文章不会改标签名，改名用 `upsert_tag`。写完后调用 `publish_post`。站点设置 `require_all_languages` 默认开启，缺少该键也视为开启；未就绪的语言会用中文和 English 一起拒绝，并且不会发布。关闭开关在 **Meta**（`/<ADMIN_SAFEPATH>/admin/meta`）。`upsert_translations` 只更新译文。`translate_post` 把还没有译文的语言放进后台队列，长文按标题和段落分段翻译，代码块、表格、图片和命令行保持原样；失败的语言记下错误，不会把原文伪装成译文。进度看 `translation_status` 或 `get_post`。`get_post` 同时返回封面 `coverKey` 和 `cover`。
 
 **Head**（`/<ADMIN_SAFEPATH>/admin/head`，头部 Meta）给每个公开页的 `<head>` 加站点验证标签，后台页面不加。预设包含 Google、Bing（`msvalidate.01`）、百度、Yandex、Pinterest（`p:domain_verify`）、Facebook，以及 Impact。Impact 必须是 `value` 属性：`<meta name="impact-site-verification" value="...">`。可选的原始片段只允许 `<meta>` 和 `<link>`。`get_settings` 返回 `head_meta`，缺少则为空。`update_head_meta` 写入它。
@@ -253,7 +273,7 @@ npx wrangler d1 migrations apply <database-name> --remote
 npx wrangler pages deploy public --project-name <project>
 ```
 
-`<database-name>` 是该站点的 D1 名称，安装脚本默认是 `<project>-db`。迁移文件是 `migrations/0002_content_ops.sql`，只增加译文列和 `translation_jobs` 表。本地预览库名仍是 `cf-blogger-db`。
+`<database-name>` 是该站点的 D1 名称，安装脚本默认是 `<project>-db`。迁移文件是 `migrations/0002_content_ops.sql`，只增加译文列和 `translation_jobs` 表。本地预览库名仍是 `cf-blogger-db`。定时发布不新增迁移。新的设置键是 `timezone`，默认 `UTC`。
 
 ### 故障排查
 

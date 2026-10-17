@@ -1,21 +1,26 @@
-import { listFeed, listLlms, sitemapPosts, sitemapTags } from './db'
+import { listFeed, listLlms, responseCacheControl, sitemapPosts, sitemapTags } from './db'
 import { COPY, LANG_META } from './i18n'
 import { originOf, siteHandle, siteName } from './site'
 import type { Env, Lang } from './types'
 import { LANGS } from './types'
 import { cdata, parseFaq, xmlEscape } from './text'
 
-function text(body: string, type = 'text/plain; charset=utf-8'): Response {
+function text(body: string, type = 'text/plain; charset=utf-8', cache = 'public, max-age=300'): Response {
   return new Response(body, {
     headers: {
       'content-type': type,
-      'cache-control': 'public, max-age=300',
+      'cache-control': cache,
+      'cdn-cache-control': cache,
     },
   })
 }
 
-function xml(body: string): Response {
-  return text(body, 'application/xml; charset=utf-8')
+async function cachedText(env: Env, body: string, type: string): Promise<Response> {
+  return text(body, type, await responseCacheControl(env.DB, 300, 0))
+}
+
+async function xml(env: Env, body: string): Promise<Response> {
+  return cachedText(env, body, 'application/xml; charset=utf-8')
 }
 
 function loc(origin: string, path: string): string {
@@ -92,7 +97,7 @@ export async function sitemapIndex(env: Env): Promise<Response> {
 ${LANGS.map((lang) => `  <sitemap><loc>${loc(origin, `/sitemap-${lang}.xml`)}</loc></sitemap>`).join('\n')}
 </sitemapindex>
 `
-  return xml(body)
+  return xml(env, body)
 }
 
 export async function sitemapLang(env: Env, lang: Lang): Promise<Response> {
@@ -122,7 +127,7 @@ export async function sitemapLang(env: Env, lang: Lang): Promise<Response> {
 ${urls.join('\n')}
 </urlset>
 `
-  return xml(body)
+  return xml(env, body)
 }
 
 export async function rss(env: Env, lang: Lang): Promise<Response> {
@@ -158,7 +163,7 @@ ${items}
 </channel>
 </rss>
 `
-  return xml(body)
+  return xml(env, body)
 }
 
 export async function llmsTxt(env: Env, full: boolean): Promise<Response> {
@@ -212,5 +217,5 @@ export async function llmsTxt(env: Env, full: boolean): Promise<Response> {
     lines.push('')
   }
   lines.push(`Site: ${origin}`, `X: https://x.com/${siteHandle(env)}`, '')
-  return text(`${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`)
+  return cachedText(env, `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`, 'text/plain; charset=utf-8')
 }

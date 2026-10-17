@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono'
 import { enqueueTranslations, processTranslationJobs, translationStatus } from '../jobs'
 import { publishBlockers, refusalText } from '../publish-gate.mjs'
+import { wallToUtc } from '../schedule.mjs'
 import { authConfigured, clearSession, isAuthed, passwordMatches, writeSession } from '../auth'
 import {
   deletePost,
@@ -80,7 +81,40 @@ async function storePost(c: Context<AppEnv>, existing: AdminPost | null) {
       locked: source ? true : next.locked,
     })
   }
-  if (value.status === 'published' && c.get('settings').require_all_languages) {
+  let status = value.status
+  let publishedAt = existing?.publishedAt ?? null
+  if (value.action === 'publish') {
+    status = 'published'
+    publishedAt = now
+  } else if (value.action === 'schedule') {
+    status = 'published'
+    try {
+      publishedAt = wallToUtc(value.publishAt, c.get('settings').timezone)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Enter a date and time.'
+      return page(c, editorView(viewBase(c), { post: existing, draft: value, error: message, defaults }), 400)
+    }
+    if (Date.parse(publishedAt) <= Date.parse(now)) {
+      return page(
+        c,
+        editorView(viewBase(c), {
+          post: existing,
+          draft: value,
+          error: 'That time has already passed. Publish now, or pick a later time.',
+          defaults,
+        }),
+        400,
+      )
+    }
+  } else if (value.action === 'unschedule') {
+    status = 'draft'
+    if (publishedAt && Date.parse(publishedAt) > Date.parse(now)) publishedAt = null
+  } else if (value.action === 'unpublish') {
+    status = 'draft'
+  } else if (status === 'published' && !publishedAt) {
+    publishedAt = now
+  }
+  if (status === 'published' && c.get('settings').require_all_languages) {
     const merged = LANGS.map((lang) => {
       if (deleteLangs.includes(lang)) return { lang, title: '', body: '', ready: false, engine: '', error: '' }
       const next = translations.find((item) => item.lang === lang)
@@ -99,12 +133,10 @@ async function storePost(c: Context<AppEnv>, existing: AdminPost | null) {
       return page(c, editorView(viewBase(c), { post: existing, draft: value, error: refusalText(blockers), defaults }), 400)
     }
   }
-  let publishedAt = existing?.publishedAt ?? null
-  if (value.status === 'published' && !publishedAt) publishedAt = now
   await savePost(c.env.DB, {
     id,
     slug: value.slug,
-    status: value.status,
+    status,
     category: value.category,
     meta: value.meta,
     coverKey: value.coverKey,
@@ -127,7 +159,8 @@ async function storePost(c: Context<AppEnv>, existing: AdminPost | null) {
       if (ctx?.waitUntil) ctx.waitUntil(processTranslationJobs(c.env, { maxAiCalls: 8 }))
     }
   }
-  return c.redirect(`/admin/posts/${id}?ok=${queued ? 'queued' : 'saved'}`, 303)
+  const ok = queued ? 'queued' : value.action === 'schedule' ? 'scheduled' : value.action === 'publish' ? 'published' : 'saved'
+  return c.redirect(`/admin/posts/${id}?ok=${ok}`, 303)
 }
 
 export function mountAdmin(app: Hono<AppEnv>) {

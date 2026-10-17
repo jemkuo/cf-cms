@@ -5,6 +5,7 @@ import { TEMPLATE_IDS, type TemplateId } from './templates'
 import { showPoweredBy } from './footer-credit.mjs'
 import { emptyHeadMeta, parseHeadMeta, type HeadMetaSettings } from './head-meta.mjs'
 import { requireAllLanguages } from './publish-gate.mjs'
+import { assertTimeZone, parseTimeZone } from './schedule.mjs'
 
 export { TEMPLATE_IDS, type TemplateId }
 export const ACCENTS = ['vermilion', 'blue', 'green', 'gold', 'slate'] as const
@@ -67,6 +68,7 @@ export type SiteConfig = {
   brand: BrandSettings
   require_all_languages: boolean
   head_meta: HeadMetaSettings
+  timezone: string
 }
 export type SettingsKey = keyof SiteConfig
 
@@ -109,6 +111,7 @@ export const DEFAULT_CONFIG: SiteConfig = {
   brand: { mark: '', themeColor: '', logoSvg: '', logoKey: '', faviconSvg: '', faviconKey: '' },
   require_all_languages: true,
   head_meta: emptyHeadMeta(),
+  timezone: 'UTC',
 }
 
 export const EMPTY_POST_META: PostMeta = { noindex: false, canonical: '', keywords: '', ogImage: '' }
@@ -260,9 +263,10 @@ const PARSERS = {
     if (!parsed.ok) throw new Error(parsed.error)
     return parsed.value
   },
+  timezone: (input: unknown) => assertTimeZone(input),
 } as const
 
-const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta'] as const
+const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone'] as const
 
 export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): SiteConfig {
   return {
@@ -273,13 +277,14 @@ export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): S
     brand: parseBrand(partial.brand ?? DEFAULT_CONFIG.brand),
     require_all_languages: requireAllLanguages(partial.require_all_languages),
     head_meta: parseHeadMetaSettings(partial.head_meta),
+    timezone: parseTimeZone(partial.timezone),
   }
 }
 
 export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   try {
     const { results } = await db
-      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta')`)
+      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone')`)
       .all<{ key: string; value_json: string }>()
     const partial: Partial<Record<SettingsKey, unknown>> = {}
     for (const row of results) {
