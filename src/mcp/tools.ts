@@ -1,5 +1,5 @@
-import { fillTranslations } from '../ai'
 import {
+  cleanPath,
   deleteChannel,
   deleteTag,
   listChannels,
@@ -23,13 +23,18 @@ import {
   adminList,
   deletePost,
   getAdminPost,
+  publicCover,
   savePost,
+  saveTranslations,
   setPostStatus,
   slugOwner,
 } from '../db'
+import { enqueueTranslations, translationStatus } from '../jobs'
+import { allLanguagesOption, publishBlockers, refusalText } from '../publish-gate.mjs'
+import { parseHeadMeta } from '../head-meta.mjs'
 import { imageKey, sniffImage } from '../media'
 import { originOf, siteName } from '../site'
-import type { Env, Lang, SaveTranslation } from '../types'
+import type { AdminTranslation, Env, Lang, SaveTranslation } from '../types'
 import { LANGS } from '../types'
 import { clip, isLang, nowIso, slugOk } from '../text'
 import onboarding from '../../onboarding.json'
@@ -93,6 +98,8 @@ function publicPost(post: NonNullable<Awaited<ReturnType<typeof getAdminPost>>>)
     slug: post.slug,
     status: post.status,
     channel: post.category,
+    coverKey: post.coverKey,
+    cover: publicCover(post.coverKey),
     authorName: post.authorName,
     authorX: post.authorX,
     sourceLang: post.sourceLang,
@@ -100,6 +107,7 @@ function publicPost(post: NonNullable<Awaited<ReturnType<typeof getAdminPost>>>)
     updatedAt: post.updatedAt,
     meta: post.meta,
     tags: post.tags,
+    translationJobs: post.translationJobs,
     translations: post.translations.map((item) => ({
       lang: item.lang,
       title: item.title,
@@ -108,11 +116,124 @@ function publicPost(post: NonNullable<Awaited<ReturnType<typeof getAdminPost>>>)
       body: item.body,
       faq: item.faq,
       shareText: item.shareText,
+      keywords: item.keywords,
+      ogImage: item.ogImage,
+      error: item.error,
       engine: item.engine,
       ready: item.ready,
       locked: item.locked,
     })),
   }
+}
+
+const translationSchema: JsonSchema = {
+  type: 'object',
+  description: 'One language. excerpt is an alias of description. og_image is optional and falls back to the post image.',
+  properties: {
+    title: { type: 'string' },
+    body: { type: 'string' },
+    excerpt: { type: 'string' },
+    description: { type: 'string' },
+    summary: { type: 'string' },
+    share_text: { type: 'string' },
+    shareText: { type: 'string' },
+    keywords: { type: 'string' },
+    og_image: { type: 'string' },
+    ogImage: { type: 'string' },
+    ready: { type: 'boolean' },
+    locked: { type: 'boolean' },
+  },
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function oneTranslation(lang: Lang, raw: Record<string, unknown>, prev: AdminTranslation | undefined, source: boolean): SaveTranslation {
+  const title = clip(raw.title === undefined ? prev?.title || '' : str(raw.title), 180)
+  const body = (raw.body === undefined ? prev?.body || '' : str(raw.body)).replace(/\r\n/g, '\n')
+  const description = clip(
+    raw.description !== undefined ? str(raw.description) : raw.excerpt !== undefined ? str(raw.excerpt) : prev?.description || '',
+    280,
+  )
+  const summary = clip(raw.summary === undefined ? prev?.summary || '' : str(raw.summary), 400)
+  const shareText = clip(
+    raw.share_text !== undefined ? str(raw.share_text) : raw.shareText !== undefined ? str(raw.shareText) : prev?.shareText || '',
+    220,
+  )
+  const keywords = clip(raw.keywords === undefined ? prev?.keywords || '' : str(raw.keywords), 180)
+  const ogRaw = raw.og_image !== undefined ? raw.og_image : raw.ogImage !== undefined ? raw.ogImage : prev?.ogImage || ''
+  const ogImage = cleanPath(ogRaw)
+  if (String(ogRaw || '').trim() && !ogImage) throw new Error(`Open Graph image for ${lang} must be /og.png or /media/images/…`)
+  if ([...body].length > 80000) throw new Error('Body is too long')
+  return {
+    lang,
+    title,
+    description,
+    summary,
+    body,
+    faq: prev?.faq || [],
+    shareText,
+    keywords,
+    ogImage,
+    error: '',
+    engine: 'human',
+    ready: source ? true : raw.ready === undefined ? (prev ? prev.ready : Boolean(title.trim() && body.trim())) : Boolean(raw.ready),
+    locked: source ? true : raw.locked === undefined ? (prev ? prev.locked : false) : Boolean(raw.locked),
+  }
+}
+
+function translationsFromArgs(
+  args: Record<string, unknown>,
+  existing: Awaited<ReturnType<typeof getAdminPost>>,
+  sourceLang: Lang,
+): SaveTranslation[] {
+  const map = record(args.translations)
+  const items: SaveTranslation[] = []
+  const seen = new Set<Lang>()
+  if (map) {
+    for (const [key, value] of Object.entries(map)) {
+      if (!isLang(key)) throw new Error(`Unknown language: ${key}`)
+      const row = record(value)
+      if (!row) throw new Error(`Translation for ${key} must be an object`)
+      const prev = existing?.translations.find((item) => item.lang === key)
+      const item = oneTranslation(key, row, prev, key === sourceLang)
+      if (!item.title.trim() && !item.body.trim()) continue
+      items.push(item)
+      seen.add(key)
+    }
+  }
+  const singleLang = isLang(str(args.lang)) ? (args.lang as Lang) : sourceLang
+  const hasSingle = args.title !== undefined || args.body !== undefined || args.description !== undefined || args.summary !== undefined
+  if (hasSingle && !seen.has(singleLang)) {
+    const prev = existing?.translations.find((item) => item.lang === singleLang)
+    items.push(
+      oneTranslation(
+        singleLang,
+        {
+          title: args.title,
+          body: args.body,
+          description: args.description,
+          summary: args.summary,
+          share_text: args.shareText,
+          keywords: args.keywords,
+          og_image: args.ogImage,
+          ready: args.ready,
+          locked: args.locked,
+        },
+        prev,
+        singleLang === sourceLang,
+      ),
+    )
+  }
+  return items
+}
+
+function gateRows(existing: Awaited<ReturnType<typeof getAdminPost>>, incoming: SaveTranslation[]) {
+  const map = new Map((existing?.translations || []).map((item) => [item.lang, item]))
+  for (const item of incoming) map.set(item.lang, { ...item, updatedAt: '' })
+  return [...map.values()]
 }
 
 function tagsFrom(args: Record<string, unknown>, lang: Lang): { slug: string; name?: string }[] {
@@ -137,8 +258,8 @@ function tagsFrom(args: Record<string, unknown>, lang: Lang): { slug: string; na
 
 async function writeFromArgs(env: Env, existing: Awaited<ReturnType<typeof getAdminPost>>, args: Record<string, unknown>) {
   const post = existing
-  if (!post && !str(args.title) && !str(args.slug)) throw new Error('Missing post')
-  const sourceLang = langOf(args.lang, post?.sourceLang || 'zh')
+  if (!post && !str(args.slug)) throw new Error('Missing slug')
+  const sourceLang = post?.sourceLang || (isLang(str(args.sourceLang)) ? (args.sourceLang as Lang) : langOf(args.lang, 'zh'))
   const slug = (str(args.slug) || post?.slug || '').trim().toLowerCase()
   if (!slugOk(slug)) throw new Error('Slug must be lowercase letters, numbers, and hyphens')
   const id = post?.id ?? crypto.randomUUID()
@@ -149,32 +270,19 @@ async function writeFromArgs(env: Env, existing: Awaited<ReturnType<typeof getAd
     ? str(args.channel).trim().toLowerCase()
     : post?.category || 'notes'
   const now = nowIso()
-  const lang = langOf(args.lang, sourceLang)
-  const prev = post?.translations.find((item) => item.lang === lang)
-  const title = clip(str(args.title) || prev?.title || '', 180)
-  const body = (str(args.body) || prev?.body || '').replace(/\r\n/g, '\n')
-  if (!title || !body.trim()) throw new Error('Title and body are required for the source language')
-  if ([...body].length > 80000) throw new Error('Body is too long')
-  const translation: SaveTranslation = {
-    lang,
-    title,
-    description: clip(str(args.description) || prev?.description || '', 280),
-    summary: clip(str(args.summary) || prev?.summary || '', 400),
-    body,
-    faq: prev?.faq || [],
-    shareText: clip(str(args.shareText) || prev?.shareText || '', 220),
-    engine: 'human',
-    ready: args.ready === undefined ? (prev ? prev.ready : lang === sourceLang) : Boolean(args.ready),
-    locked: args.locked === undefined ? (prev ? prev.locked : lang === sourceLang) : Boolean(args.locked),
-  }
-  if (lang === sourceLang) {
-    translation.ready = true
-    translation.locked = true
-  }
   const meta = args.meta ? parsePostMeta({ ...(post?.meta || {}), ...(args.meta as object) }) : post?.meta || parsePostMeta({})
   let publishedAt = post?.publishedAt ?? null
   if (status === 'published' && !publishedAt) publishedAt = now
-  const tags = args.tags ? tagsFrom(args, lang) : (post?.tags || []).map((tag) => ({ slug: tag.slug, name: tag.names[sourceLang] }))
+  const tags = args.tags ? tagsFrom(args, sourceLang) : (post?.tags || []).map((tag) => ({ slug: tag.slug }))
+  const incoming = translationsFromArgs(args, post, post?.sourceLang || sourceLang)
+  if (!incoming.length && !post) throw new Error('Title and body are required for the source language')
+  const sourceItem = incoming.find((item) => item.lang === (post?.sourceLang || sourceLang)) || post?.translations.find((item) => item.lang === (post?.sourceLang || sourceLang))
+  if (!sourceItem?.title.trim() || !sourceItem.body.trim()) throw new Error('Title and body are required for the source language')
+  const config = await loadConfig(env.DB)
+  if (status === 'published' && allLanguagesOption(args.all_languages, config.require_all_languages)) {
+    const blockers = publishBlockers(gateRows(post, incoming.length ? incoming : []))
+    if (blockers.length) throw new Error(refusalText(blockers))
+  }
   await savePost(env.DB, {
     id,
     slug,
@@ -189,10 +297,10 @@ async function writeFromArgs(env: Env, existing: Awaited<ReturnType<typeof getAd
     updatedAt: now,
     meta,
     tags,
-    translations: [translation],
+    translations: incoming,
     deleteLangs: [],
   })
-  if (args.translate === true) await fillTranslations(env, id, 'missing')
+  if (args.translate === true) await enqueueTranslations(env, id, undefined, 'missing')
   const saved = await getAdminPost(env.DB, id)
   if (!saved) throw new Error('Save failed')
   return publicPost(saved)
@@ -272,7 +380,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_post',
-    description: 'Read one post, including translations, tags, channel, and per-post meta.',
+    description: 'Read one post, including cover, translations, per-language keywords and errors, tags, and translation job status.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' }, slug: { type: 'string' } },
@@ -283,15 +391,16 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'create_post',
-    description: 'Create a draft or published post in one language. Set translate true to fill the other languages with Workers AI.',
+    description: 'Create a draft or published post. Pass translations for zh, en, ja, es, and ar to save every language in one write. Tags are attached by slug and never renamed. Set translate true to queue Workers AI for languages that are still empty.',
     inputSchema: {
       type: 'object',
-      required: ['slug', 'title', 'body'],
+      required: ['slug'],
       properties: {
         slug: { type: 'string' },
         title: { type: 'string' },
-        body: { type: 'string', description: 'Markdown' },
+        body: { type: 'string', description: 'Markdown for lang, used when translations does not include that language' },
         lang: langSchema,
+        sourceLang: langSchema,
         status: { type: 'string', enum: ['draft', 'published'] },
         channel: { type: 'string' },
         description: { type: 'string' },
@@ -301,7 +410,9 @@ export const TOOLS: Tool[] = [
         authorX: { type: 'string' },
         tags: { type: 'array', items: { type: 'string' } },
         meta: postMetaSchema,
+        translations: { type: 'object', additionalProperties: translationSchema },
         translate: { type: 'boolean' },
+        all_languages: { type: 'boolean', description: 'When status is published, require every language. Defaults to the require_all_languages setting.' },
       },
     },
     async run(env, args) {
@@ -310,7 +421,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'update_post',
-    description: 'Update a post by id or slug. Omit fields you want to keep. meta is merged.',
+    description: 'Update a post by id or slug. translations saves every included language in one write and does not rename tags. Omit fields you want to keep. meta is merged.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -329,9 +440,11 @@ export const TOOLS: Tool[] = [
         coverKey: { type: 'string' },
         tags: { type: 'array' },
         meta: postMetaSchema,
+        translations: { type: 'object', additionalProperties: translationSchema },
         ready: { type: 'boolean' },
         locked: { type: 'boolean' },
         translate: { type: 'boolean' },
+        all_languages: { type: 'boolean' },
       },
     },
     async run(env, args) {
@@ -340,12 +453,78 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'publish_post',
-    description: 'Mark a post published so public routes, the sitemap, and RSS can include ready translations.',
+    description: 'Publish a post so every ready language goes live together. Refuses when all_languages is true and any of zh, en, ja, es, ar is missing or not ready. all_languages defaults to the require_all_languages setting (missing means true).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        slug: { type: 'string' },
+        all_languages: { type: 'boolean' },
+      },
+    },
+    async run(env, args) {
+      const post = await requirePost(env, args)
+      const config = await loadConfig(env.DB)
+      if (allLanguagesOption(args.all_languages, config.require_all_languages)) {
+        const blockers = publishBlockers(post.translations)
+        if (blockers.length) throw new Error(refusalText(blockers))
+      }
+      await setPostStatus(env.DB, post.id, 'published')
+      return { id: post.id, slug: post.slug, status: 'published', languages: post.translations.filter((item) => item.ready).map((item) => item.lang) }
+    },
+  },
+  {
+    name: 'upsert_translations',
+    description: 'Save many language versions of one post in a single write. Does not rename tags or change publish status.',
+    inputSchema: {
+      type: 'object',
+      required: ['translations'],
+      properties: {
+        id: { type: 'string' },
+        slug: { type: 'string' },
+        translations: { type: 'object', additionalProperties: translationSchema },
+      },
+    },
+    async run(env, args) {
+      const post = await requirePost(env, args)
+      const incoming = translationsFromArgs({ ...args, lang: post.sourceLang }, post, post.sourceLang)
+      if (!incoming.length) throw new Error('No translations to save')
+      await saveTranslations(env.DB, post.id, incoming)
+      const saved = await getAdminPost(env.DB, post.id)
+      if (!saved) throw new Error('Save failed')
+      return publicPost(saved)
+    },
+  },
+  {
+    name: 'translate_post',
+    description: 'Queue chunked Workers AI translation for a post. langs defaults to every language except the source. Long posts are split by section. Failures store an error and never copy the source text. The job continues in the background and on later requests.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        slug: { type: 'string' },
+        langs: { type: 'array', items: langSchema },
+        mode: { type: 'string', enum: ['missing', 'unlocked'] },
+      },
+    },
+    async run(env, args) {
+      const post = await requirePost(env, args)
+      const langs = Array.isArray(args.langs) ? args.langs.filter((item): item is Lang => isLang(str(item))) : undefined
+      const mode = args.mode === 'unlocked' ? 'unlocked' : 'missing'
+      const queued = await enqueueTranslations(env, post.id, langs, mode)
+      const status = await translationStatus(env, post.id)
+      return { ...queued, status }
+    },
+  },
+  {
+    name: 'translation_status',
+    description: 'Read per-language readiness and background translation jobs for a post.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' }, slug: { type: 'string' } } },
     async run(env, args) {
       const post = await requirePost(env, args)
-      await setPostStatus(env.DB, post.id, 'published')
-      return { id: post.id, slug: post.slug, status: 'published' }
+      const status = await translationStatus(env, post.id)
+      if (!status) throw new Error('Post not found')
+      return status
     },
   },
   {
@@ -444,19 +623,43 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_settings',
-    description: 'Read template, layout, brand, site meta, and share link settings.',
+    description: 'Read template, layout, brand, site meta, share links, require_all_languages, and head_meta. Missing require_all_languages means true. Missing head_meta means no extra tags.',
     inputSchema: {
       type: 'object',
-      properties: { section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'all'] } },
+      properties: {
+        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'all'] },
+      },
     },
     async run(env, args) {
       const config = await loadConfig(env.DB)
       const section = str(args.section) || 'all'
       if (section === 'all') return config
+      if (section === 'head_meta') return { head_meta: config.head_meta, require_all_languages: config.require_all_languages }
       if (section === 'template' || section === 'layout' || section === 'meta' || section === 'share' || section === 'brand') {
         return { [section]: config[section] }
       }
       throw new Error('Unknown settings section')
+    },
+  },
+  {
+    name: 'update_head_meta',
+    description: 'Set site-verification and custom meta tags injected into every public page. entries are {kind: name|property, key, attr: content|value, value}. impact-site-verification is stored with the value attribute. raw allows only meta and link tags. Rejects charset, viewport, description, robots, canonical, and og.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        entries: { type: 'array' },
+        raw: { type: 'string' },
+      },
+    },
+    async run(env, args) {
+      const current = await loadConfig(env.DB)
+      const parsed = parseHeadMeta({
+        entries: args.entries === undefined ? current.head_meta.entries : args.entries,
+        raw: args.raw === undefined ? current.head_meta.raw : args.raw,
+      })
+      if (!parsed.ok) throw new Error(parsed.error)
+      await saveSettings(env.DB, 'head_meta', parsed.value)
+      return parsed.value
     },
   },
   {

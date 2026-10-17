@@ -3,6 +3,8 @@ import { LANGS } from './types'
 import { clip, nowIso, slugOk } from './text'
 import { TEMPLATE_IDS, type TemplateId } from './templates'
 import { showPoweredBy } from './footer-credit.mjs'
+import { emptyHeadMeta, parseHeadMeta, type HeadMetaSettings } from './head-meta.mjs'
+import { requireAllLanguages } from './publish-gate.mjs'
 
 export { TEMPLATE_IDS, type TemplateId }
 export const ACCENTS = ['vermilion', 'blue', 'green', 'gold', 'slate'] as const
@@ -55,12 +57,16 @@ export type BrandSettings = {
   faviconSvg: string
   faviconKey: string
 }
+export type { HeadMetaSettings }
+
 export type SiteConfig = {
   template: TemplateSettings
   layout: LayoutSettings
   meta: SiteMetaSettings
   share: ShareSettings
   brand: BrandSettings
+  require_all_languages: boolean
+  head_meta: HeadMetaSettings
 }
 export type SettingsKey = keyof SiteConfig
 
@@ -101,6 +107,8 @@ export const DEFAULT_CONFIG: SiteConfig = {
   },
   share: { x: '', github: '', mastodon: '', linkedin: '', website: '', showRss: true },
   brand: { mark: '', themeColor: '', logoSvg: '', logoKey: '', faviconSvg: '', faviconKey: '' },
+  require_all_languages: true,
+  head_meta: emptyHeadMeta(),
 }
 
 export const EMPTY_POST_META: PostMeta = { noindex: false, canonical: '', keywords: '', ogImage: '' }
@@ -235,13 +243,26 @@ export function parsePostMeta(input: unknown): PostMeta {
   }
 }
 
+export function parseHeadMetaSettings(input: unknown): HeadMetaSettings {
+  const parsed = parseHeadMeta(input ?? emptyHeadMeta())
+  return parsed.ok ? parsed.value : emptyHeadMeta()
+}
+
 const PARSERS = {
   template: parseTemplate,
   layout: parseLayout,
   meta: parseSiteMeta,
   share: parseShare,
   brand: parseBrand,
+  require_all_languages: (input: unknown) => requireAllLanguages(input),
+  head_meta: (input: unknown) => {
+    const parsed = parseHeadMeta(input ?? emptyHeadMeta())
+    if (!parsed.ok) throw new Error(parsed.error)
+    return parsed.value
+  },
 } as const
+
+const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta'] as const
 
 export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): SiteConfig {
   return {
@@ -250,21 +271,23 @@ export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): S
     meta: parseSiteMeta(partial.meta ?? DEFAULT_CONFIG.meta),
     share: parseShare(partial.share ?? DEFAULT_CONFIG.share),
     brand: parseBrand(partial.brand ?? DEFAULT_CONFIG.brand),
+    require_all_languages: requireAllLanguages(partial.require_all_languages),
+    head_meta: parseHeadMetaSettings(partial.head_meta),
   }
 }
 
 export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   try {
     const { results } = await db
-      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand')`)
+      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta')`)
       .all<{ key: string; value_json: string }>()
     const partial: Partial<Record<SettingsKey, unknown>> = {}
     for (const row of results) {
-      if (row.key !== 'template' && row.key !== 'layout' && row.key !== 'meta' && row.key !== 'share' && row.key !== 'brand') continue
+      if (!(SETTING_KEYS as readonly string[]).includes(row.key)) continue
       try {
-        partial[row.key] = JSON.parse(row.value_json)
+        partial[row.key as SettingsKey] = JSON.parse(row.value_json)
       } catch {
-        partial[row.key] = {}
+        partial[row.key as SettingsKey] = {}
       }
     }
     return parseSettings(partial)

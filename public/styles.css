@@ -367,6 +367,23 @@ input, textarea, select {
 textarea.body { min-height: 16rem; font-family: var(--mono); font-size: 0.9rem; line-height: 1.55; }
 .lang-block { border: 1px solid var(--line); background: var(--bg-raise); padding: 0.2rem 1rem 1rem; margin-top: 0.8rem; }
 .lang-block summary { cursor: pointer; padding-block: 0.7rem; font-weight: 650; }
+.lang-switcher { position: relative; margin-top: 0.8rem; }
+.lang-switcher > input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.lang-tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.lang-tabs label { border: 1px solid var(--line); padding: 0.35rem 0.7rem; cursor: pointer; }
+.lang-panel { display: none; border: 1px solid var(--line); background: var(--bg-raise); padding: 1rem; margin-top: 0.6rem; }
+.lang-switcher input#tab-zh:checked ~ .lang-tabs label[for="tab-zh"],
+.lang-switcher input#tab-en:checked ~ .lang-tabs label[for="tab-en"],
+.lang-switcher input#tab-ja:checked ~ .lang-tabs label[for="tab-ja"],
+.lang-switcher input#tab-es:checked ~ .lang-tabs label[for="tab-es"],
+.lang-switcher input#tab-ar:checked ~ .lang-tabs label[for="tab-ar"] { border-color: var(--ink); color: var(--ink); }
+.lang-switcher input#tab-zh:checked ~ .panels .panel-zh,
+.lang-switcher input#tab-en:checked ~ .panels .panel-en,
+.lang-switcher input#tab-ja:checked ~ .panels .panel-ja,
+.lang-switcher input#tab-es:checked ~ .panels .panel-es,
+.lang-switcher input#tab-ar:checked ~ .panels .panel-ar { display: block; }
+.readiness { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 1rem; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 .faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
 .checks, .form-actions, .upload-row, .inline-form { display: flex; flex-wrap: wrap; gap: 0.8rem 1rem; align-items: center; }
 .check { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 0.45rem; }

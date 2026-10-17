@@ -1,6 +1,7 @@
 import { html } from 'hono/html'
 import type { Channel, SiteConfig } from '../config'
 import { type ParsedPost } from '../form'
+import { publishBlockers } from '../publish-gate.mjs'
 import { LANG_META, formatDate } from '../i18n'
 import type { AdminListItem, AdminPost, Env, Lang } from '../types'
 import { LANGS } from '../types'
@@ -25,7 +26,8 @@ const ERRORS: Record<string, string> = {
 
 const OKS: Record<string, string> = {
   saved: 'Saved.',
-  translated: 'Translation finished. Unpublished placeholders stay off the public site.',
+  translated: 'Translation finished.',
+  queued: 'Translation queued. It continues in the background and does not copy the source text into a failed language.',
   uploaded: 'Image uploaded.',
 }
 
@@ -122,6 +124,21 @@ export function editorView(base: Base, input: EditorInput) {
   const sourceLang = value?.sourceLang || post?.sourceLang || 'zh'
   const title = post ? 'Edit post' : 'New post'
   const meta = value?.meta || post?.meta
+  const gateOn = base.settings.require_all_languages
+  const currentStatus = value?.status || post?.status || 'draft'
+  const readiness = LANGS.map((lang) => {
+    const fromDraft = value?.translations[lang]
+    const fromPost = post?.translations.find((item) => item.lang === lang)
+    return {
+      lang,
+      title: fromDraft?.title ?? fromPost?.title ?? '',
+      body: fromDraft?.body ?? fromPost?.body ?? '',
+      ready: lang === sourceLang ? true : fromDraft ? fromDraft.ready : Boolean(fromPost?.ready),
+      engine: fromPost?.engine || '',
+      error: fromDraft ? '' : fromPost?.error || '',
+    }
+  })
+  const blockers = gateOn ? publishBlockers(readiness) : []
   const channels = [...base.channels]
   const currentChannel = value?.category || post?.category || 'notes'
   if (currentChannel && !channels.some((item) => item.slug === currentChannel)) {
@@ -139,6 +156,9 @@ export function editorView(base: Base, input: EditorInput) {
       ${input.error ? html`<p class="banner error">${ERRORS[input.error] || input.error}</p>` : ''}
       ${input.ok ? html`<p class="banner">${OKS[input.ok] || input.ok}</p>` : ''}
       ${post?.translateNote ? html`<p class="banner">${post.translateNote}</p>` : ''}
+      ${post?.translationJobs?.some((job) => job.status === 'pending' || job.status === 'running' || job.status === 'error')
+        ? html`<p class="banner">${post.translationJobs.map((job) => `${job.lang}: ${job.status}${job.error ? ` (${job.error})` : ''}`).join(' · ')}</p>`
+        : ''}
       ${post
         ? html`<form class="upload-row" data-upload action="/admin/media" method="post" enctype="multipart/form-data">
             <input type="hidden" name="next" value="/admin/posts/${post.id}">
@@ -158,12 +178,7 @@ export function editorView(base: Base, input: EditorInput) {
           </label>
           <label>
             <span class="lbl">Status</span>
-            <select name="status">
-              ${['draft', 'published'].map((status) => {
-                const current = value?.status || post?.status || 'draft'
-                return html`<option value="${status}" ${current === status ? 'selected' : ''}>${status === 'published' ? 'Published' : 'Draft'}</option>`
-              })}
-            </select>
+            <input value="${currentStatus === 'published' ? 'Published' : 'Draft'}" readonly>
           </label>
           <label>
             <span class="lbl">Channel</span>
@@ -213,15 +228,61 @@ export function editorView(base: Base, input: EditorInput) {
             <input name="meta_og" value="${meta?.ogImage || ''}" placeholder="/og.png or /media/images/…">
           </label>
         </fieldset>
-        ${LANGS.map((lang) => languageFields(lang, sourceLang, post, value))}
+        <div class="readiness" aria-label="Language readiness">
+          ${readiness.map((item) => {
+            const blocker = blockers.find((row) => row.lang === item.lang)
+            const cls = blocker ? 'badge warn' : 'badge ok'
+            const label = blocker ? blocker.state : 'ready'
+            return html`<span class="${cls}">${LANG_META[item.lang].short} ${label}</span>`
+          })}
+        </div>
+        ${gateOn
+          ? html`<p class="muted">Publish stays off until zh, en, ja, es, and ar are ready. 五种语言都就绪后才能发布。</p>`
+          : html`<p class="muted">require_all_languages is off, so Publish does not wait for every language.</p>`}
+        <div class="lang-switcher">
+          ${LANGS.map((lang) => html`<input type="radio" name="lang_tab" id="tab-${lang}" value="${lang}" ${lang === sourceLang ? 'checked' : ''}>`)}
+          <div class="lang-tabs">
+            ${LANGS.map((lang) => html`<label for="tab-${lang}">${LANG_META[lang].label}</label>`)}
+          </div>
+          <div class="panels">
+            ${LANGS.map((lang) => languageFields(lang, sourceLang, post, value))}
+          </div>
+        </div>
         <label class="check">
-          <input type="checkbox" name="auto_translate" checked>
-          <span>On save, ask Workers AI to fill languages that have no body yet</span>
+          <input type="checkbox" name="auto_translate">
+          <span>On save, queue Workers AI for languages that have no translation yet</span>
         </label>
-        <div class="form-actions">
-          <button type="submit">Save</button>
+        <input type="hidden" name="status" value="${currentStatus}">
+        <div class="form-actions" data-publish-gate="${gateOn ? 'on' : 'off'}" data-source="${sourceLang}">
+          <button type="submit" name="action" value="save">Save</button>
+          <button type="submit" name="action" value="publish" data-publish ${gateOn && blockers.length ? 'disabled' : ''}>Publish</button>
+          ${currentStatus === 'published' ? html`<button class="ghost" type="submit" name="action" value="unpublish">Unpublish</button>` : ''}
           ${post ? html`<a class="button ghost" href="/admin/preview/${post.id}/${sourceLang}">Preview source</a>` : ''}
         </div>
+        <script nonce="${base.nonce}">
+          (function () {
+            var gate = document.querySelector('[data-publish-gate]')
+            if (!gate) return
+            var button = gate.querySelector('[data-publish]')
+            if (!button) return
+            var required = gate.getAttribute('data-publish-gate') === 'on'
+            var source = gate.getAttribute('data-source')
+            var langs = ['zh', 'en', 'ja', 'es', 'ar']
+            function sync() {
+              if (!required) { button.disabled = false; return }
+              button.disabled = !langs.every(function (lang) {
+                var title = document.querySelector('[name="title_' + lang + '"]')
+                var body = document.querySelector('[name="body_' + lang + '"]')
+                var ready = document.querySelector('[name="ready_' + lang + '"]')
+                var readyOk = lang === source || (ready && ready.checked)
+                return title && body && title.value.trim() && body.value.trim() && readyOk
+              })
+            }
+            document.addEventListener('input', sync)
+            document.addEventListener('change', sync)
+            sync()
+          })()
+        </script>
       </form>
       ${post
         ? html`<form method="post" action="/admin/posts/${post.id}/translate" class="inline-form">
@@ -235,7 +296,7 @@ export function editorView(base: Base, input: EditorInput) {
       <aside class="help">
         <p>Image: <code>![alt](/media/images/…)</code></p>
         <p>X post: <code>{{x:https://x.com/user/status/123}}</code></p>
-        <p>Locked languages are not overwritten. If AI is unavailable, an unpublished placeholder is stored until you edit it and mark it public.</p>
+        <p>Locked languages are not overwritten. A failed translation stores an error for that language and does not copy the source text. Saving a post attaches tags by slug and does not rename them.</p>
       </aside>
     </div>`,
   )
@@ -255,20 +316,23 @@ function languageFields(lang: Lang, sourceLang: Lang, post: AdminPost | null, dr
   const summary = fromDraft?.summary ?? fromPost?.summary ?? ''
   const body = fromDraft?.body ?? fromPost?.body ?? ''
   const share = fromDraft?.shareText ?? fromPost?.shareText ?? ''
+  const keywords = fromDraft?.keywords ?? fromPost?.keywords ?? ''
+  const ogImage = fromDraft?.ogImage ?? fromPost?.ogImage ?? ''
   const faq = fromDraft?.faq ?? fromPost?.faq ?? []
+  const error = fromDraft ? '' : fromPost?.error || ''
   const ready = fromDraft ? fromDraft.ready : fromPost ? fromPost.ready : true
   const locked = fromDraft ? fromDraft.locked : lang === sourceLang || Boolean(fromPost?.locked)
   const engine = fromPost?.engine
-  const open = lang === sourceLang || Boolean(body)
-  return html`<details class="lang-block" ${open ? 'open' : ''}>
-    <summary>
-      <span lang="${meta.htmlLang}">${meta.label}</span>
-      ${lang === sourceLang ? html`<span class="badge">Source</span>` : ''}
-      ${engine === 'workers-ai' ? html`<span class="badge ok">Workers AI</span>` : ''}
-      ${engine === 'fallback' ? html`<span class="badge warn">Untranslated</span>` : ''}
-      ${engine === 'human' && lang !== sourceLang ? html`<span class="badge ok">Edited</span>` : ''}
-    </summary>
+  return html`<section class="lang-panel panel-${lang}">
     <div class="stack">
+      <p>
+        <span lang="${meta.htmlLang}">${meta.label}</span>
+        ${lang === sourceLang ? html`<span class="badge">Source</span>` : ''}
+        ${engine === 'workers-ai' ? html`<span class="badge ok">Workers AI</span>` : ''}
+        ${engine === 'fallback' ? html`<span class="badge warn">Failed</span>` : ''}
+        ${engine === 'human' && lang !== sourceLang ? html`<span class="badge ok">Edited</span>` : ''}
+      </p>
+      ${error ? html`<p class="banner error">${error}</p>` : ''}
       <label>
         <span class="lbl">Title</span>
         <input name="title_${lang}" value="${title}" dir="${meta.dir}" lang="${meta.htmlLang}">
@@ -289,6 +353,14 @@ function languageFields(lang: Lang, sourceLang: Lang, post: AdminPost | null, dr
         <span class="lbl">Share text for X</span>
         <input name="share_${lang}" value="${share}" dir="${meta.dir}" lang="${meta.htmlLang}">
       </label>
+      <label>
+        <span class="lbl">Keywords · this language, or the post keywords if empty</span>
+        <input name="keywords_${lang}" value="${keywords}" dir="${meta.dir}" lang="${meta.htmlLang}">
+      </label>
+      <label>
+        <span class="lbl">Open Graph image · this language, or the post image if empty</span>
+        <input name="og_${lang}" value="${ogImage}" placeholder="/og.png or /media/images/…">
+      </label>
       <div class="faq-grid">
         ${[0, 1, 2].map((index) => html`<label>
             <span class="lbl">Question ${index + 1}</span>
@@ -304,7 +376,7 @@ function languageFields(lang: Lang, sourceLang: Lang, post: AdminPost | null, dr
         <label class="check"><input type="checkbox" name="locked_${lang}" ${locked ? 'checked' : ''}><span>Lock against automatic translation</span></label>
       </div>
     </div>
-  </details>`
+  </section>`
 }
 
 export function mediaView(

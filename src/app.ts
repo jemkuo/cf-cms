@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { DEFAULT_CONFIG, loadChannels, loadConfig } from './config'
+import { processTranslationJobs } from './jobs'
 import { mountAdmin } from './routes/admin'
 import { mountMcp } from './routes/mcp'
 import { mountPublic } from './routes/public'
@@ -49,6 +50,8 @@ app.use('*', async (c, next) => {
     c.set('settings', DEFAULT_CONFIG)
     c.set('channels', [])
   }
+  const ctx = c.executionCtx
+  if (ctx?.waitUntil) ctx.waitUntil(processTranslationJobs(c.env).catch((error) => console.error('translation job', error)))
   await next()
   c.header('x-content-type-options', 'nosniff')
   c.header('referrer-policy', 'strict-origin-when-cross-origin')

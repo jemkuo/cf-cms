@@ -1,6 +1,7 @@
 import { html, raw } from 'hono/html'
 import type { SiteConfig } from '../config'
 import { poweredByMarkup } from '../footer-credit.mjs'
+import { renderHeadMeta } from '../head-meta.mjs'
 import { COPY, LANG_META } from '../i18n'
 import { brandStyle, hasLogo, iconHref, logoHtml, markText } from '../kit'
 import { siteName } from '../site'
@@ -19,6 +20,7 @@ export type Shell = {
   path: string
   alternates: Alternate[]
   type?: 'website' | 'article'
+  keywords?: string
   imageKey?: string | null
   noindex?: boolean
   jsonLd?: unknown[]
@@ -42,7 +44,7 @@ function abs(origin: string, path: string): string {
 function styleHref(settings: SiteConfig): string {
   const brand = settings.brand.themeColor.replace('#', '') || 'accent'
   const token = [
-    '5',
+    '6',
     settings.template.id,
     settings.template.font,
     settings.template.accent,
@@ -84,6 +86,7 @@ export function shell(input: Shell) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${fullTitle}</title>
   <meta name="description" content="${fullDescription}">
+  ${input.keywords ? html`<meta name="keywords" content="${input.keywords}">` : ''}
   <link rel="canonical" href="${canonical}">
   <link rel="icon" href="${iconHref(input.settings.brand)}" type="${iconHref(input.settings.brand).endsWith('.png') ? 'image/png' : 'image/svg+xml'}">
   <link rel="alternate" type="text/plain" href="${origin}/llms.txt" title="llms.txt">
@@ -126,6 +129,7 @@ export function shell(input: Shell) {
     : html`<meta name="theme-color" content="#f3efe4" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#12110f" media="(prefers-color-scheme: dark)">`}
   ${brandStyle(input.settings.brand, input.nonce)}
   <script nonce="${input.nonce}">(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  ${input.admin ? '' : raw(renderHeadMeta(input.settings.head_meta))}
   <link rel="stylesheet" href="${styleHref(input.settings)}">
   ${json}
 </head>
@@ -175,6 +179,7 @@ const ADMIN_LINKS = [
   ['/admin/layout', 'Layout', 'layout'],
   ['/admin/channels', 'Channels', 'channels'],
   ['/admin/meta', 'Meta', 'meta'],
+  ['/admin/head', 'Head', 'head'],
   ['/admin/tags', 'Tags', 'tags'],
   ['/admin/share', 'Share', 'share'],
 ] as const

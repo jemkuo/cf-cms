@@ -31,7 +31,7 @@ test('public shell prints the credit after the copyright and admin pages skip th
   assert.equal(copyAt > 0 && creditAt > copyAt, true)
   assert.match(layout, /input\.admin \? '' : footer/)
   assert.match(layout, /show_powered_by \? raw\(poweredByMarkup\(\)\)/)
-  assert.match(layout, /'5'/)
+  assert.match(layout, /'6'/)
 })
 
 test('Article JSON-LD does not include the footer credit', () => {

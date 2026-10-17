@@ -1,5 +1,6 @@
 import type { Hono } from 'hono'
 import onboarding from '../../onboarding.json'
+import { processTranslationJobs } from '../jobs'
 import { handleRpc } from '../mcp/dispatch'
 import type { AppEnv } from '../types'
 
@@ -40,6 +41,8 @@ export function mountMcp(app: Hono<AppEnv>) {
       return c.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400)
     }
     const response = await handleRpc(c.env, body)
+    const ctx = c.executionCtx
+    if (ctx?.waitUntil) ctx.waitUntil(processTranslationJobs(c.env, { maxAiCalls: 8 }).catch((error) => console.error('translation job', error)))
     if (response === null) return c.body(null, 202)
     return c.json(response)
   })

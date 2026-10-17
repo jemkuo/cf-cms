@@ -1,4 +1,4 @@
-import { parsePostMeta } from './config'
+import { cleanPath, parsePostMeta } from './config'
 import type { Faq, Lang, PostMeta } from './types'
 import { LANGS } from './types'
 import { clip, isLang, isStatus, normalizeCover, parseTagInput, slugOk } from './text'
@@ -28,6 +28,8 @@ export type ParsedPost = {
       summary: string
       body: string
       shareText: string
+      keywords: string
+      ogImage: string
       ready: boolean
       locked: boolean
       faq: Faq[]
@@ -54,6 +56,8 @@ export function parsePostForm(body: Record<string, unknown>): { ok: true; value:
     const description = clip(bag[`description_${lang}`] || '', 280)
     const summary = clip(bag[`summary_${lang}`] || '', 400)
     const shareText = clip(bag[`share_${lang}`] || '', 220)
+    const keywords = clip(bag[`keywords_${lang}`] || '', 180)
+    const ogRaw = (bag[`og_${lang}`] || '').trim()
     const text = bag[`body_${lang}`] || ''
     if ([...text].length > 80000) return { ok: false, error: 'body' }
     const faq: Faq[] = []
@@ -68,6 +72,8 @@ export function parsePostForm(body: Record<string, unknown>): { ok: true; value:
       summary,
       body: text.replace(/\r\n/g, '\n'),
       shareText,
+      keywords,
+      ogImage: ogRaw,
       ready: bag[`ready_${lang}`] === 'on',
       locked: bag[`locked_${lang}`] === 'on',
       faq,
@@ -79,6 +85,11 @@ export function parsePostForm(body: Record<string, unknown>): { ok: true; value:
   if (!authorName) return { ok: false, error: 'author' }
   const cover = normalizeCover(bag.cover_key || '')
   if (cover === false) return { ok: false, error: 'cover' }
+  for (const lang of LANGS) {
+    const og = translations[lang].ogImage.trim()
+    if (og && !cleanPath(og)) return { ok: false, error: 'cover' }
+    translations[lang].ogImage = cleanPath(og)
+  }
   const rawCategory = (bag.category || '').trim().toLowerCase()
   const category = slugOk(rawCategory) ? rawCategory : 'notes'
   const meta = parsePostMeta({
@@ -87,7 +98,9 @@ export function parsePostForm(body: Record<string, unknown>): { ok: true; value:
     keywords: bag.meta_keywords || '',
     ogImage: bag.meta_og || '',
   })
-  const status = isStatus(bag.status || '') ? bag.status : 'draft'
+  let status = isStatus(bag.status || '') ? bag.status : 'draft'
+  if (bag.action === 'publish') status = 'published'
+  if (bag.action === 'unpublish') status = 'draft'
   return {
     ok: true,
     value: {

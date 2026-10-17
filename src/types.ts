@@ -81,9 +81,23 @@ export type AdminTranslation = {
   body: string
   faq: Faq[]
   shareText: string
+  keywords: string
+  ogImage: string
+  error: string
   engine: Engine
   ready: boolean
   locked: boolean
+  updatedAt: string
+}
+
+export type TranslationJob = {
+  id: string
+  postId: string
+  lang: Lang
+  status: string
+  error: string
+  cursor: number
+  attempts: number
   updatedAt: string
 }
 
@@ -103,6 +117,7 @@ export type AdminPost = {
   updatedAt: string
   tags: { slug: string; names: Partial<Record<Lang, string>> }[]
   translations: AdminTranslation[]
+  translationJobs: TranslationJob[]
 }
 
 export type AdminListItem = {
@@ -125,6 +140,9 @@ export type SaveTranslation = {
   body: string
   faq: Faq[]
   shareText: string
+  keywords: string
+  ogImage: string
+  error: string
   engine: Engine
   ready: boolean
   locked: boolean

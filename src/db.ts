@@ -1,4 +1,5 @@
-import { EMPTY_POST_META, parsePostMeta, type PostMeta } from './config'
+import { EMPTY_POST_META, cleanPath, parsePostMeta, type PostMeta } from './config'
+import { TAG_NAME_INSERT_SQL } from './tag-attach.mjs'
 import { renderMarkdown } from './md'
 import { copy } from './i18n'
 import type {
@@ -11,6 +12,7 @@ import type {
   PostCard,
   SavePostInput,
   SaveTranslation,
+  TranslationJob,
 } from './types'
 import {
   coverPublicPath,
@@ -217,7 +219,16 @@ type ArticleRow = CardRow & {
   body_md: string
   faq_json: string
   share_text: string
+  keywords?: string | null
+  og_image?: string | null
   meta_json?: string | null
+}
+
+function articleMeta(row: ArticleRow): PostMeta {
+  const meta = readMeta(row.meta_json)
+  const keywords = (row.keywords || '').trim() || meta.keywords
+  const ogImage = cleanPath(row.og_image || '') || meta.ogImage
+  return { ...meta, keywords, ogImage }
 }
 
 export async function getArticle(
@@ -230,7 +241,7 @@ export async function getArticle(
   const status = preview ? '' : `AND p.status = 'published'`
   const row = await db
     .prepare(
-      `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, p.meta_json
+      `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, t.keywords, t.og_image, p.meta_json
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.lang = ? ${ready}
        WHERE p.slug = ? ${status}`,
@@ -253,7 +264,7 @@ export async function getArticle(
     faq,
     shareText: row.share_text || row.title,
     publishedAt: row.published_at || row.updated_at,
-    meta: readMeta(row.meta_json),
+    meta: articleMeta(row),
   }
 }
 
@@ -273,7 +284,7 @@ export async function publishedSource(db: D1Database, slug: string): Promise<Lan
 export async function listFeed(db: D1Database, lang: Lang): Promise<Article[]> {
   const { results } = await db
     .prepare(
-      `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, p.meta_json
+      `SELECT ${CARD_COLUMNS}, t.body_md, t.faq_json, t.share_text, t.keywords, t.og_image, p.meta_json
        FROM posts p
        JOIN translations t ON t.post_id = p.id AND t.lang = ? AND t.ready = 1
        WHERE p.status = 'published'
@@ -294,7 +305,7 @@ export async function listFeed(db: D1Database, lang: Lang): Promise<Article[]> {
       hasXEmbed: rendered.hasXEmbed,
       faq: parseFaq(row.faq_json),
       shareText: row.share_text || row.title,
-      meta: readMeta(row.meta_json),
+      meta: articleMeta(row),
     }
   })
 }
@@ -395,6 +406,9 @@ function mapAdminTranslation(row: {
   body_md: string
   faq_json: string
   share_text: string
+  keywords?: string | null
+  og_image?: string | null
+  error?: string | null
   engine: string
   ready: number
   locked: number
@@ -410,6 +424,9 @@ function mapAdminTranslation(row: {
     body: row.body_md,
     faq: parseFaq(row.faq_json),
     shareText: row.share_text,
+    keywords: row.keywords || '',
+    ogImage: row.og_image || '',
+    error: row.error || '',
     engine,
     ready: row.ready === 1,
     locked: row.locked === 1,
@@ -497,6 +514,9 @@ export async function getAdminPost(db: D1Database, id: string): Promise<AdminPos
       body_md: string
       faq_json: string
       share_text: string
+      keywords?: string | null
+      og_image?: string | null
+      error?: string | null
       engine: string
       ready: number
       locked: number
@@ -537,6 +557,7 @@ export async function getAdminPost(db: D1Database, id: string): Promise<AdminPos
       const mapped = mapAdminTranslation(row)
       return mapped ? [mapped] : []
     }),
+    translationJobs: await listTranslationJobs(db, id),
   }
 }
 
@@ -594,13 +615,7 @@ export async function savePost(db: D1Database, input: SavePostInput): Promise<vo
     statements.push(
       db.prepare(`INSERT INTO post_tags (post_id, tag_slug) VALUES (?, ?)`).bind(input.id, tag.slug),
     )
-    const name = tag.name || tag.slug
-    const sql = tag.name
-      ? `INSERT INTO tag_translations (tag_slug, lang, name) VALUES (?, ?, ?)
-         ON CONFLICT(tag_slug, lang) DO UPDATE SET name = excluded.name`
-      : `INSERT INTO tag_translations (tag_slug, lang, name) VALUES (?, ?, ?)
-         ON CONFLICT(tag_slug, lang) DO NOTHING`
-    statements.push(db.prepare(sql).bind(tag.slug, input.sourceLang, name))
+    statements.push(db.prepare(TAG_NAME_INSERT_SQL).bind(tag.slug, input.sourceLang, tag.name || tag.slug))
   }
   await db.batch(statements)
 }
@@ -610,8 +625,8 @@ function translationStatement(db: D1Database, postId: string, item: SaveTranslat
     .prepare(
       `INSERT INTO translations (
          post_id, lang, title, description, summary, body_md, faq_json, share_text,
-         engine, ready, locked, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         keywords, og_image, error, engine, ready, locked, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(post_id, lang) DO UPDATE SET
          title = excluded.title,
          description = excluded.description,
@@ -619,6 +634,9 @@ function translationStatement(db: D1Database, postId: string, item: SaveTranslat
          body_md = excluded.body_md,
          faq_json = excluded.faq_json,
          share_text = excluded.share_text,
+         keywords = excluded.keywords,
+         og_image = excluded.og_image,
+         error = excluded.error,
          engine = excluded.engine,
          ready = excluded.ready,
          locked = excluded.locked,
@@ -633,6 +651,9 @@ function translationStatement(db: D1Database, postId: string, item: SaveTranslat
       item.body,
       faqJson(item.faq),
       item.shareText,
+      item.keywords,
+      item.ogImage,
+      item.error,
       item.engine,
       item.ready ? 1 : 0,
       item.locked ? 1 : 0,
@@ -640,29 +661,49 @@ function translationStatement(db: D1Database, postId: string, item: SaveTranslat
     )
 }
 
-export async function writeTranslation(
-  db: D1Database,
-  postId: string,
-  item: SaveTranslation,
-  tagNames: { slug: string; name: string }[],
-): Promise<void> {
-  const updated = new Date().toISOString()
-  const statements: D1PreparedStatement[] = [
-    translationStatement(db, postId, item),
+export async function saveTranslations(db: D1Database, postId: string, items: SaveTranslation[]): Promise<void> {
+  if (!items.length) return
+  const updated = nowIso()
+  await db.batch([
+    ...items.map((item) => translationStatement(db, postId, item)),
     db.prepare(`UPDATE posts SET updated_at = ? WHERE id = ?`).bind(updated, postId),
-  ]
-  for (const tag of tagNames) {
-    if (!tag.name.trim()) continue
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO tag_translations (tag_slug, lang, name) VALUES (?, ?, ?)
-           ON CONFLICT(tag_slug, lang) DO UPDATE SET name = excluded.name`,
-        )
-        .bind(tag.slug, item.lang, tag.name.trim()),
-    )
+  ])
+}
+
+export async function writeTranslation(db: D1Database, postId: string, item: SaveTranslation): Promise<void> {
+  await saveTranslations(db, postId, [item])
+}
+
+export async function markTranslationError(db: D1Database, postId: string, lang: Lang, message: string, keepBody: boolean): Promise<void> {
+  const updated = nowIso()
+  if (keepBody) {
+    await db
+      .prepare(`UPDATE translations SET error = ?, updated_at = ? WHERE post_id = ? AND lang = ?`)
+      .bind(message, updated, postId, lang)
+      .run()
+    return
   }
-  await db.batch(statements)
+  await db
+    .prepare(
+      `INSERT INTO translations (
+         post_id, lang, title, description, summary, body_md, faq_json, share_text,
+         keywords, og_image, error, engine, ready, locked, updated_at
+       ) VALUES (?, ?, '', '', '', '', '[]', '', '', '', ?, 'fallback', 0, 0, ?)
+       ON CONFLICT(post_id, lang) DO UPDATE SET
+         title = '',
+         description = '',
+         summary = '',
+         body_md = '',
+         faq_json = '[]',
+         share_text = '',
+         error = excluded.error,
+         engine = 'fallback',
+         ready = 0,
+         locked = translations.locked,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(postId, lang, message, updated)
+    .run()
 }
 
 export async function setTranslateNote(db: D1Database, id: string, note: string): Promise<void> {
@@ -686,12 +727,134 @@ export async function setPostStatus(db: D1Database, id: string, status: 'draft' 
 
 export async function deletePost(db: D1Database, id: string): Promise<void> {
   await db.batch([
+    db.prepare(`DELETE FROM translation_jobs WHERE post_id = ?`).bind(id),
     db.prepare(`DELETE FROM post_tags WHERE post_id = ?`).bind(id),
     db.prepare(`DELETE FROM translations WHERE post_id = ?`).bind(id),
     db.prepare(`DELETE FROM posts WHERE id = ?`).bind(id),
     db.prepare(`DELETE FROM tags WHERE slug NOT IN (SELECT tag_slug FROM post_tags)`),
     db.prepare(`DELETE FROM tag_translations WHERE tag_slug NOT IN (SELECT slug FROM tags)`),
   ])
+}
+
+export async function listTranslationJobs(db: D1Database, postId: string): Promise<TranslationJob[]> {
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT id, post_id, lang, status, error, cursor, attempts, updated_at
+         FROM translation_jobs WHERE post_id = ? ORDER BY created_at`,
+      )
+      .bind(postId)
+      .all<{
+        id: string
+        post_id: string
+        lang: string
+        status: string
+        error: string
+        cursor: number
+        attempts: number
+        updated_at: string
+      }>()
+    return results.flatMap((row) => {
+      if (!isLang(row.lang)) return []
+      return [
+        {
+          id: row.id,
+          postId: row.post_id,
+          lang: row.lang,
+          status: row.status,
+          error: row.error || '',
+          cursor: row.cursor || 0,
+          attempts: row.attempts || 0,
+          updatedAt: row.updated_at,
+        },
+      ]
+    })
+  } catch {
+    return []
+  }
+}
+
+export async function replaceTranslationJobs(db: D1Database, postId: string, langs: Lang[]): Promise<void> {
+  const now = nowIso()
+  const statements: D1PreparedStatement[] = langs.map((lang) =>
+    db.prepare(`DELETE FROM translation_jobs WHERE post_id = ? AND lang = ?`).bind(postId, lang),
+  )
+  for (const lang of langs) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO translation_jobs (
+             id, post_id, lang, status, error, cursor, partial, attempts, created_at, updated_at
+           ) VALUES (?, ?, ?, 'pending', '', 0, '', 0, ?, ?)`,
+        )
+        .bind(crypto.randomUUID(), postId, lang, now, now),
+    )
+  }
+  if (statements.length) await db.batch(statements)
+}
+
+export async function nextTranslationJob(db: D1Database): Promise<{
+  id: string
+  post_id: string
+  lang: string
+  status: string
+  error: string
+  cursor: number
+  partial: string
+  attempts: number
+} | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, post_id, lang, status, error, cursor, partial, attempts
+       FROM translation_jobs
+       WHERE status IN ('pending', 'running')
+       ORDER BY updated_at
+       LIMIT 1`,
+    )
+    .first<{
+      id: string
+      post_id: string
+      lang: string
+      status: string
+      error: string
+      cursor: number
+      partial: string
+      attempts: number
+    }>()
+  return row ?? null
+}
+
+export async function saveTranslationJob(
+  db: D1Database,
+  id: string,
+  patch: { status: string; error?: string; cursor?: number; partial?: string; attempts?: number },
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE translation_jobs
+       SET status = ?, error = ?, cursor = ?, partial = ?, attempts = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(patch.status, patch.error || '', patch.cursor ?? 0, patch.partial || '', patch.attempts ?? 0, nowIso(), id)
+    .run()
+}
+
+export async function listOpenTranslationJobs(db: D1Database): Promise<{ id: string; postId: string; lang: string }[]> {
+  const { results } = await db
+    .prepare(`SELECT id, post_id, lang FROM translation_jobs WHERE status IN ('pending', 'running')`)
+    .all<{ id: string; post_id: string; lang: string }>()
+  return results.map((row) => ({ id: row.id, postId: row.post_id, lang: row.lang }))
+}
+
+export async function failOpenTranslationJobs(db: D1Database, message: string): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE translation_jobs
+       SET status = 'error', error = ?, updated_at = ?
+       WHERE status IN ('pending', 'running')`,
+    )
+    .bind(message, nowIso())
+    .run()
 }
 
 export function publicCover(key: string | null): string | null {

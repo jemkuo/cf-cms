@@ -20,9 +20,11 @@ import { applyLogoAsset, applyVisualKit, clearBrandSlot, paintKitBrand } from '.
 import { presetById } from '../templates'
 import type { AppEnv } from '../types'
 import { bagFromBody } from '../form'
+import { HEAD_PRESETS, parseHeadMeta } from '../head-meta.mjs'
 import {
   brandView,
   channelsView,
+  headView,
   layoutView,
   metaView,
   shareView,
@@ -136,10 +138,43 @@ export function mountSettings(app: Hono<AppEnv>) {
 
   app.get('/admin/meta', (c) => page(c, metaView(baseOf(c), c.req.query('ok'), c.req.query('error'))))
   app.post('/admin/meta', async (c) => {
-    const meta = parseSiteMeta(bagFromBody(await c.req.parseBody()))
+    const bag = bagFromBody(await c.req.parseBody())
+    const meta = parseSiteMeta(bag)
     await saveSettings(c.env.DB, 'meta', meta)
+    await saveSettings(c.env.DB, 'require_all_languages', bag.require_all_languages === 'on')
     await refresh(c)
     return page(c, metaView(baseOf(c), 'Metadata saved.'))
+  })
+
+  app.get('/admin/head', (c) => page(c, headView(baseOf(c), c.req.query('ok'), c.req.query('error'))))
+  app.post('/admin/head', async (c) => {
+    const bag = bagFromBody(await c.req.parseBody())
+    const entries = HEAD_PRESETS.flatMap((preset, index) => {
+      const value = (bag[`preset_${index}`] || '').trim()
+      if (!value) return []
+      return [{ kind: preset.kind, key: preset.key, attr: preset.attr, value }]
+    })
+    for (let index = 0; index < 4; index += 1) {
+      const key = (bag[`custom_key_${index}`] || '').trim()
+      const value = (bag[`custom_value_${index}`] || '').trim()
+      if (!key && !value) continue
+      entries.push({
+        kind: bag[`custom_kind_${index}`] === 'property' ? 'property' : 'name',
+        key,
+        attr: bag[`custom_attr_${index}`] === 'value' ? 'value' : 'content',
+        value,
+      })
+    }
+    const parsed = parseHeadMeta({ entries, raw: bag.head_raw || '' })
+    if (!parsed.ok) return page(c, headView(baseOf(c), undefined, parsed.error), 400)
+    try {
+      await saveSettings(c.env.DB, 'head_meta', parsed.value)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save head tags'
+      return page(c, headView(baseOf(c), undefined, message), 400)
+    }
+    await refresh(c)
+    return page(c, headView(baseOf(c), 'Head tags saved.'))
   })
 
   app.get('/admin/share', (c) => page(c, shareView(baseOf(c), c.req.query('ok'), c.req.query('error'))))

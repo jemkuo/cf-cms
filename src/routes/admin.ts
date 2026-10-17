@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono'
-import { fillTranslations } from '../ai'
+import { enqueueTranslations, processTranslationJobs, translationStatus } from '../jobs'
+import { publishBlockers, refusalText } from '../publish-gate.mjs'
 import { authConfigured, clearSession, isAuthed, passwordMatches, writeSession } from '../auth'
 import {
   deletePost,
@@ -31,6 +32,8 @@ function changed(prev: AdminTranslation | undefined, next: ParsedPost['translati
     prev.summary !== next.summary ||
     prev.body !== next.body ||
     prev.shareText !== next.shareText ||
+    prev.keywords !== next.keywords ||
+    prev.ogImage !== next.ogImage ||
     prev.ready !== next.ready ||
     prev.locked !== next.locked ||
     JSON.stringify(prev.faq) !== JSON.stringify(next.faq)
@@ -69,10 +72,32 @@ async function storePost(c: Context<AppEnv>, existing: AdminPost | null) {
       body: next.body,
       faq: next.faq,
       shareText: next.shareText,
+      keywords: next.keywords,
+      ogImage: next.ogImage,
+      error: '',
       engine: 'human',
       ready: source ? true : next.ready,
       locked: source ? true : next.locked,
     })
+  }
+  if (value.status === 'published' && c.get('settings').require_all_languages) {
+    const merged = LANGS.map((lang) => {
+      if (deleteLangs.includes(lang)) return { lang, title: '', body: '', ready: false, engine: '', error: '' }
+      const next = translations.find((item) => item.lang === lang)
+      const prev = existing?.translations.find((item) => item.lang === lang)
+      return {
+        lang,
+        title: next?.title ?? prev?.title ?? '',
+        body: next?.body ?? prev?.body ?? '',
+        ready: lang === value.sourceLang ? true : (next ? next.ready : Boolean(prev?.ready)),
+        engine: next ? 'human' : prev?.engine || '',
+        error: next ? '' : prev?.error || '',
+      }
+    })
+    const blockers = publishBlockers(merged)
+    if (blockers.length) {
+      return page(c, editorView(viewBase(c), { post: existing, draft: value, error: refusalText(blockers), defaults }), 400)
+    }
   }
   let publishedAt = existing?.publishedAt ?? null
   if (value.status === 'published' && !publishedAt) publishedAt = now
@@ -93,8 +118,16 @@ async function storePost(c: Context<AppEnv>, existing: AdminPost | null) {
     translations,
     deleteLangs,
   })
-  if (value.autoTranslate) await fillTranslations(c.env, id, 'missing')
-  return c.redirect(`/admin/posts/${id}?ok=saved`, 303)
+  let queued = false
+  if (value.autoTranslate) {
+    const job = await enqueueTranslations(c.env, id, undefined, 'missing')
+    queued = job.queued.length > 0
+    if (queued) {
+      const ctx = c.executionCtx
+      if (ctx?.waitUntil) ctx.waitUntil(processTranslationJobs(c.env, { maxAiCalls: 8 }))
+    }
+  }
+  return c.redirect(`/admin/posts/${id}?ok=${queued ? 'queued' : 'saved'}`, 303)
 }
 
 export function mountAdmin(app: Hono<AppEnv>) {
@@ -148,12 +181,20 @@ export function mountAdmin(app: Hono<AppEnv>) {
     return storePost(c, post)
   })
 
+  app.get('/admin/posts/:id/translation-status', async (c) => {
+    const post = await getAdminPost(c.env.DB, c.req.param('id'))
+    if (!post) return c.json({ error: 'missing' }, 404)
+    return c.json(await translationStatus(c.env, post.id))
+  })
+
   app.post('/admin/posts/:id/translate', async (c) => {
     const post = await getAdminPost(c.env.DB, c.req.param('id'))
     if (!post) return c.redirect('/admin?ok=missing', 302)
     const mode = (await c.req.parseBody()).mode === 'unlocked' ? 'unlocked' : 'missing'
-    await fillTranslations(c.env, post.id, mode)
-    return c.redirect(`/admin/posts/${post.id}?ok=translated`, 303)
+    await enqueueTranslations(c.env, post.id, undefined, mode)
+    const ctx = c.executionCtx
+    if (ctx?.waitUntil) ctx.waitUntil(processTranslationJobs(c.env, { maxAiCalls: 8 }))
+    return c.redirect(`/admin/posts/${post.id}?ok=queued`, 303)
   })
 
   app.post('/admin/posts/:id/delete', async (c) => {

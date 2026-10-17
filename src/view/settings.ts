@@ -11,6 +11,7 @@ import {
   type SiteConfig,
   type TagAdmin,
 } from '../config'
+import { HEAD_PRESETS } from '../head-meta.mjs'
 import { hasLogo, logoHtml, markText } from '../kit'
 import { LANG_META } from '../i18n'
 import { NICHE_ORDER, presetById, presetsInNiche } from '../templates'
@@ -170,7 +171,7 @@ export function metaView(base: Base, ok?: string, error?: string) {
       <header class="page-head">
         <p class="kicker">Site</p>
         <h1>Metadata</h1>
-        <p class="dek">Site title and the public URL still come from SITE_NAME and SITE_URL. These fields cover description, cards, and robots. Per-post meta is on each post.</p>
+        <p class="dek">Site title and the public URL still come from SITE_NAME and SITE_URL. These fields cover description, cards, and robots. Verification tags live under Head. Per-post meta is on each post.</p>
       </header>
       ${banner(ok, error)}
       <form method="post" action="/admin/meta" class="stack">
@@ -181,7 +182,71 @@ export function metaView(base: Base, ok?: string, error?: string) {
           <select name="twitterCard">${TWITTER_CARDS.map((id) => html`<option value="${id}" ${value.twitterCard === id ? 'selected' : ''}>${id}</option>`)}</select>
         </label>
         <label><span class="lbl">Robots</span><input name="robots" value="${value.robots}"></label>
+        <label class="check">
+          <input type="checkbox" name="require_all_languages" ${base.settings.require_all_languages ? 'checked' : ''}>
+          <span>Require all 5 languages (zh, en, ja, es, ar) before a post can be published</span>
+        </label>
         <button type="submit">Save metadata</button>
+      </form>
+    </div>`,
+  )
+}
+
+export function headView(base: Base, ok?: string, error?: string) {
+  const head = base.settings.head_meta
+  const presetValue = (key: string) => head.entries.find((entry) => entry.key === key)?.value || ''
+  const custom = head.entries.filter((entry) => !HEAD_PRESETS.some((preset) => preset.key === entry.key))
+  return page(
+    base,
+    'Head tags',
+    'head',
+    html`<div class="wrap">
+      <header class="page-head">
+        <p class="kicker">头部 Meta</p>
+        <h1>Head tags</h1>
+        <p class="dek">Verification and custom meta tags are added to the head of every public page. Admin screens stay clear of them. Built-in tags (charset, viewport, description, robots, canonical, og) are rejected.</p>
+      </header>
+      ${banner(ok, error)}
+      <form method="post" action="/admin/head" class="stack">
+        ${HEAD_PRESETS.map(
+          (preset, index) => html`<label>
+            <span class="lbl">${preset.label} · ${preset.key}${preset.attr === 'value' ? ' · value attribute' : ''}</span>
+            <input name="preset_${index}" value="${presetValue(preset.key)}" autocomplete="off">
+          </label>`,
+        )}
+        <h2>Custom tags</h2>
+        ${[0, 1, 2, 3].map((index) => {
+          const entry = custom[index]
+          return html`<div class="form-grid">
+            <label>
+              <span class="lbl">Name</span>
+              <input name="custom_key_${index}" value="${entry?.key || ''}" placeholder="name or property">
+            </label>
+            <label>
+              <span class="lbl">Kind</span>
+              <select name="custom_kind_${index}">
+                <option value="name" ${entry?.kind === 'property' ? '' : 'selected'}>name</option>
+                <option value="property" ${entry?.kind === 'property' ? 'selected' : ''}>property</option>
+              </select>
+            </label>
+            <label>
+              <span class="lbl">Attribute</span>
+              <select name="custom_attr_${index}">
+                <option value="content" ${entry?.attr === 'value' ? '' : 'selected'}>content</option>
+                <option value="value" ${entry?.attr === 'value' ? 'selected' : ''}>value</option>
+              </select>
+            </label>
+            <label>
+              <span class="lbl">Value</span>
+              <input name="custom_value_${index}" value="${entry?.value || ''}">
+            </label>
+          </div>`
+        })}
+        <label>
+          <span class="lbl">Raw head snippet · meta and link tags only</span>
+          <textarea name="head_raw" rows="5" placeholder="<meta name=&quot;example&quot; content=&quot;token&quot;>">${head.raw}</textarea>
+        </label>
+        <button type="submit">Save head tags</button>
       </form>
     </div>`,
   )

@@ -146,6 +146,7 @@ export function articleView(base: Base, article: Article, options?: { preview?: 
     ...base,
     title: article.title,
     description: article.description || article.summary,
+    keywords: article.meta.keywords,
     path: article.meta.canonical || path,
     alternates: alternates(base.lang, (code) => (article.langs.includes(code) ? `/${code}/posts/${article.slug}` : null)),
     type: 'article',
