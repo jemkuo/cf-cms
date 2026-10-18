@@ -14,7 +14,7 @@ The sample site shipped in this folder is named Field Notes. Field Notes is the 
 4. **Prefab themes.** Two original layouts each for a personal tech blog, a lifestyle journal, a traditional business homepage, and a tech-company homepage.
 5. **One-click visual kit.** Generate a logo SVG, favicon, and theme color that match the active template. Regenerate or edit them afterward.
 
-Also included: multilingual SEO and GEO (Chinese, English, Japanese, Spanish, and Arabic, with Arabic right-to-left), an admin path hidden behind a secret safepath, and CMS screens for template, brand, layout, channels, meta, tags, and share links.
+Also included: multilingual SEO and GEO (Chinese, English, Japanese, Spanish, and Arabic, with Arabic right-to-left), an admin path hidden behind a secret safepath, and CMS screens for template, brand, layout, channels, meta, site copy, tags, and share links.
 
 ```
 Browser
@@ -55,31 +55,50 @@ Paste one sentence into Cursor, Claude, or another MCP client. Replace `$ADMIN_A
 English:
 
 ```
-CF CMS (package cf-cms) is an open-source multilingual blog and CMS on the Cloudflare free tier — Pages Functions, D1, R2, and Workers AI — with public routes for zh, en, ja, es, and ar (Arabic is RTL); the admin UI and admin APIs are only at /<ADMIN_SAFEPATH>/admin/ (ADMIN_SAFEPATH is a random secret created by setup, plain /admin returns 404, and the login session is still required on that path); connect its MCP server by posting JSON-RPC to /mcp with header Authorization: Bearer $ADMIN_API_TOKEN (local stdio proxy: npm run mcp with CF_CMS_URL) and use tools project_info, list_posts, get_post, create_post, update_post, publish_post, unpublish_post, delete_post, list_tags, upsert_tag, delete_tag, list_channels, upsert_channel, delete_channel, get_settings, update_template, update_layout, update_meta, update_share, update_brand, upload_logo, generate_visual_kit, list_media, upload_media, and delete_media to read the project and manage drafts, published posts, tags, channels, site and per-post meta, template, layout, share links, logo, favicon, theme color, visual kits, and R2 media.
+CF CMS (package cf-cms) is an open-source multilingual blog and CMS on the Cloudflare free tier — Pages Functions, D1, R2, and Workers AI — with public routes for zh, en, ja, es, and ar (Arabic is RTL); the admin UI and admin APIs are only at /<ADMIN_SAFEPATH>/admin/ (ADMIN_SAFEPATH is a random secret created by setup, plain /admin returns 404, and the login session is still required on that path); connect its MCP server by posting JSON-RPC to /mcp with header Authorization: Bearer $ADMIN_API_TOKEN (local stdio proxy: npm run mcp with CF_CMS_URL) and use tools project_info, list_posts, get_post, create_post, update_post, publish_post, unpublish_post, delete_post, list_tags, upsert_tag, delete_tag, list_channels, upsert_channel, delete_channel, get_settings, get_site_copy, update_site_copy, update_template, update_layout, update_meta, update_share, update_brand, upload_logo, generate_visual_kit, list_media, upload_media, and delete_media to read the project and manage drafts, published posts, tags, channels, site and per-post meta, per-language site copy (homepage headline, footer line, About page), template, layout, share links, logo, favicon, theme color, visual kits, and R2 media.
 ```
 
 中文:
 
 ```
-CF CMS（包名 cf-cms）是跑在 Cloudflare 免费套餐上的开源多语言博客与 CMS，使用 Pages Functions、D1、R2 和 Workers AI，公开路由为 zh、en、ja、es、ar（阿拉伯语从右到左）；后台页面和后台接口只在 /<ADMIN_SAFEPATH>/admin/（ADMIN_SAFEPATH 由安装脚本随机生成，直接访问 /admin 会返回 404，到达该路径后仍要登录会话）；把 MCP 连到 /mcp，请求头使用 Authorization: Bearer $ADMIN_API_TOKEN（本地 stdio 代理是设置 CF_CMS_URL 后执行 npm run mcp），并用 project_info、list_posts、get_post、create_post、update_post、publish_post、unpublish_post、delete_post、list_tags、upsert_tag、delete_tag、list_channels、upsert_channel、delete_channel、get_settings、update_template、update_layout、update_meta、update_share、update_brand、upload_logo、generate_visual_kit、list_media、upload_media、delete_media 阅读站点并管理草稿、发布、标签、栏目、站点与文章 meta、模板、版式、分享链接、标志、favicon、主题色、视觉套件和 R2 媒体。
+CF CMS（包名 cf-cms）是跑在 Cloudflare 免费套餐上的开源多语言博客与 CMS，使用 Pages Functions、D1、R2 和 Workers AI，公开路由为 zh、en、ja、es、ar（阿拉伯语从右到左）；后台页面和后台接口只在 /<ADMIN_SAFEPATH>/admin/（ADMIN_SAFEPATH 由安装脚本随机生成，直接访问 /admin 会返回 404，到达该路径后仍要登录会话）；把 MCP 连到 /mcp，请求头使用 Authorization: Bearer $ADMIN_API_TOKEN（本地 stdio 代理是设置 CF_CMS_URL 后执行 npm run mcp），并用 project_info、list_posts、get_post、create_post、update_post、publish_post、unpublish_post、delete_post、list_tags、upsert_tag、delete_tag、list_channels、upsert_channel、delete_channel、get_settings、get_site_copy、update_site_copy、update_template、update_layout、update_meta、update_share、update_brand、upload_logo、generate_visual_kit、list_media、upload_media、delete_media 阅读站点并管理草稿、发布、标签、栏目、站点与文章 meta、分语言站点文案（首页标题、页脚、关于页）、模板、版式、分享链接、标志、favicon、主题色、视觉套件和 R2 媒体。
 ```
 
-Cursor stdio config (token stays in your environment, not in git):
+Cursor, remote server (recommended; the token stays in your environment, not in git). Put this in `~/.cursor/mcp.json` or `.cursor/mcp.json`, then export `CFCMS_TOKEN` before you start Cursor:
+
+```json
+{
+  "mcpServers": {
+    "cf-cms": {
+      "url": "https://your.site/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:CFCMS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+`/mcp` answers JSON-RPC over HTTP POST, so any MCP client with a Streamable HTTP transport and a custom header can connect. Use `http://127.0.0.1:8791/mcp` for the local preview.
+
+Cursor, local stdio proxy (for clients that only run commands). Run it from this repo:
 
 ```json
 {
   "mcpServers": {
     "cf-cms": {
       "command": "npm",
-      "args": ["run", "mcp"],
+      "args": ["run", "--silent", "mcp"],
       "env": {
-        "CF_CMS_URL": "http://127.0.0.1:8791",
-        "ADMIN_API_TOKEN": "paste-your-token"
+        "CF_CMS_URL": "https://your.site",
+        "ADMIN_API_TOKEN": "${env:CFCMS_TOKEN}"
       }
     }
   }
 }
 ```
+
+The proxy speaks standard MCP stdio: one JSON-RPC message per line on stdin and stdout. Clients that still send `Content-Length` headers are answered in the same framing. `--silent` keeps npm's banner off stdout.
 
 `GET /mcp` returns the same sentences and does not require the token. `POST /mcp` is JSON-RPC (`initialize`, `tools/list`, `tools/call`) and requires `Authorization: Bearer <ADMIN_API_TOKEN>`. The token must be at least 16 characters. It only authorizes content tools. It cannot deploy, read your Cloudflare account, or change Pages secrets.
 
@@ -88,6 +107,7 @@ Example prompts after the client connects:
 - Call `project_info`, then summarize the drafts.
 - Create a draft in Chinese with slug `edge-notes`, channel `notes`, and translate it.
 - Set the template to `launch`, then generate a visual kit.
+- Set the homepage headline, footer line, and About page in all five languages with `update_site_copy`.
 
 `translate: true` on `create_post` or `update_post` queues Workers AI. It does not copy the source text into a language that failed. See [Five languages on every publish](#five-languages-on-every-publish).
 
@@ -220,13 +240,30 @@ Pages Functions cannot run a scheduled Worker, so nothing depends on cron. List 
 
 The other presets use `content`. An optional raw snippet may contain only `<meta>` and `<link>` tags. Scripts, event handlers, and `javascript:` URLs are removed or rejected. Names that duplicate built-in tags are rejected: charset, viewport, description, robots, canonical, and `og:*`. `get_settings` returns `head_meta` (missing means no extra tags). `update_head_meta` sets `entries` and `raw`.
 
+## Site copy
+
+**Copy** (`/<ADMIN_SAFEPATH>/admin/copy`) edits the public text that used to be fixed in `src/i18n.ts`, per language: the homepage headline (`tagline`), the eyebrow label above it (`kicker`), the line under the headline (`description`), the footer line (`footer`), and the About page (`aboutTitle`, `aboutBody` paragraphs). Every field is optional. An empty field shows the built-in text, so a site that never saves this screen looks exactly as before. `description` falls back to the Meta description, then to the built-in line. The footer copyright still uses `SITE_NAME`.
+
+The settings key is `site_copy`, stored in D1 like the other settings. No migration. `llms.txt` and RSS use a saved tagline or description when there is one.
+
+MCP: `get_site_copy` returns `stored` (saved overrides) and `effective` (what each page shows). `update_site_copy` patches fields; omitted fields stay, `""` or `null` clears a field, a language set to `null` clears that language, and `replace: true` starts from empty. Limits: tagline 160, kicker 80, description 400, footer 200, aboutTitle 120 characters, aboutBody up to 12 paragraphs of 2,000 characters.
+
+```json
+{
+  "copy": {
+    "en": { "tagline": "Cloud launches for small teams", "kicker": "CLOUD · AI · DATA", "footer": "Built on the edge.", "aboutBody": ["We move sites and tools to the edge.", "Based anywhere."] },
+    "zh": { "tagline": "帮小团队把业务搬上云", "footer": "生于边缘。" }
+  }
+}
+```
+
 ## Footer credit
 
 Every public page, in every template and language, ends the footer with a small muted line: Powered by [CF CMS](https://github.com/jemkuo/cf-cms). The wording stays English, including on Arabic pages. Admin screens do not show it, and it is not part of Article JSON-LD. It is on unless the layout setting `show_powered_by` is false. A saved layout that has no such field stays on. Turn it off under **Layout** (`/<ADMIN_SAFEPATH>/admin/layout`), or with MCP `update_layout` `{ "show_powered_by": false }`. `get_settings` returns the field on the `layout` section.
 
 ## Day-2
 
-- Admin URL pattern: `/<ADMIN_SAFEPATH>/admin/`. Setup writes a random `ADMIN_SAFEPATH` Pages secret and prints the URL once. `/admin` and `/admin/login` return 404. After the secret path, the password or Cloudflare Access session is still required. Template, brand, layout, channels, meta, tags, and share links are separate screens. Per-post meta (noindex, canonical, keywords, Open Graph image) is on the post form.
+- Admin URL pattern: `/<ADMIN_SAFEPATH>/admin/`. Setup writes a random `ADMIN_SAFEPATH` Pages secret and prints the URL once. `/admin` and `/admin/login` return 404. After the secret path, the password or Cloudflare Access session is still required. Template, brand, layout, channels, meta, head, site copy, tags, and share links are separate screens. Per-post meta (noindex, canonical, keywords, Open Graph image) is on the post form.
 - Rotate secrets with `npx wrangler pages secret put <NAME> --project-name <project>`.
 - Re-running `seed/seed.sql` deletes posts and translations. It does not remove your settings rows if you skip the settings tables; the shipped seed deletes posts, tags, and translations only.
 - Workers AI quota resets daily. `translate_post` queues translation in the background. It does not run on page views.
@@ -254,9 +291,13 @@ CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 4. 预制主题：个人技术博客、生活方式、传统企业首页、科技公司首页，各两套。
 5. 一键视觉套件：按当前模板生成配套标志和主题色。
 
-另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、标签和分享链接设置。示例站点名是 Field Notes。Field Notes 是仓库附带的种子内容，不是线上的 jemai.cc。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
+另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、站点文案、标签和分享链接设置。示例站点名是 Field Notes。Field Notes 是仓库附带的种子内容，不是线上的 jemai.cc。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
 
 公开页脚最后一行是较小、较淡的 “Powered by CF CMS”（各语言都用这句英文，CF CMS 链到 GitHub 仓库）。后台页面不显示，也不会写进 JSON-LD。默认开启。版式里没有 `show_powered_by` 时仍视为开启。在 **Layout**（`/<ADMIN_SAFEPATH>/admin/layout`）取消勾选，或用 MCP `update_layout` 传入 `{ "show_powered_by": false }` 即可关掉。`get_settings` 的 `layout` 段会返回这个字段。
+
+**站点文案**（`/<ADMIN_SAFEPATH>/admin/copy`，Copy）按语言修改原来写死在 `src/i18n.ts` 里的公开文字：首页大标题 `tagline`、标题上方的眉题 `kicker`、标题下的一句话 `description`、页脚那句 `footer`，以及关于页的标题 `aboutTitle` 和段落 `aboutBody`。每项都可以留空，留空就显示内置文字，所以从没保存过这一页的站点和以前完全一样。`description` 先回落到 Meta 描述，再回落到内置文字。页脚版权仍然用 `SITE_NAME`。设置键是 `site_copy`，和其他设置一样存在 D1，不需要迁移。保存了标题或描述时，`llms.txt` 和 RSS 也会用它。MCP 用 `get_site_copy` 读取（`stored` 是已保存的覆盖，`effective` 是页面实际显示的内容），用 `update_site_copy` 按字段修改：没写的字段保持不变，`""` 或 `null` 清空该字段，某种语言设为 `null` 清空该语言，`replace: true` 先全部清空。长度上限：tagline 160、kicker 80、description 400、footer 200、aboutTitle 120 个字符，aboutBody 最多 12 段、每段 2000 字符。
+
+Cursor 推荐用远程方式连接：在 `mcp.json` 里写 `"url": "https://你的站点/mcp"` 和 `"headers": { "Authorization": "Bearer ${env:CFCMS_TOKEN}" }`，令牌放在环境变量里。本地 stdio 代理（`npm run --silent mcp`，设置 `CF_CMS_URL` 和 `ADMIN_API_TOKEN`）使用标准 MCP stdio：标准输入输出每行一条 JSON-RPC 消息；仍发送 `Content-Length` 头的旧客户端也能用，回复会用同样的格式。
 
 定时发布：默认仍是立即公开。编辑器里选 **Publish now**，或调用 `publish_post`、以及 `status` 为 `published` 且不带 `publish_at` 的 `create_post` / `update_post`，文章马上上线。要等到某个时刻，就选 **Schedule**，或传入 `publish_at`。它必须是带时区偏移或 `Z` 的 ISO 8601，例如 `2026-10-18T09:30:00+08:00`，没有偏移会被拒绝，并且必须是将来的时间。库里存 UTC。到这一分钟之前，文章页是 404，列表、栏目、标签、RSS、sitemap、文章 JSON-LD、该文的 Open Graph、`llms.txt` 和 `llms-full.txt` 都不会出现它。没有单独的搜索索引，上面的列表就是发现入口，用的是同一条规则。时间一到，下一次请求就会看到，不用重新部署，也不用 cron。判断是读取时的 `published_at <= now`。已经发布且 `published_at` 为空的旧文章保持公开。`require_all_languages` 对定时和立即发布一样，五种语言同一个时间上线。
 

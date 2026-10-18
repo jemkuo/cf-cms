@@ -8,6 +8,7 @@ import { isSchemaError } from '../site'
 import type { AppEnv, Lang } from '../types'
 import { isLang, negotiate } from '../text'
 import { aboutView, articleView, filteredView, homeView, notFoundView, schemaErrorView } from '../view/public'
+import { ownCopy } from '../copy'
 
 function pageOf(raw: string | undefined): number {
   const value = Number(raw || '1')
@@ -172,7 +173,7 @@ export function mountPublic(app: Hono<AppEnv>) {
         'topic',
         slug,
         channelLabel(c.get('channels'), slug, lang),
-        ui.description,
+        ownCopy(lang, c.get('settings')).description || ui.description,
         posts,
         page,
         pages,

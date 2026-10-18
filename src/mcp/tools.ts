@@ -33,6 +33,8 @@ import { enqueueTranslations, translationStatus } from '../jobs'
 import { allLanguagesOption, publishBlockers, refusalText } from '../publish-gate.mjs'
 import { assertTimeZone, matchesListStatus, parsePublishAt, visibilityOf } from '../schedule.mjs'
 import { parseHeadMeta } from '../head-meta.mjs'
+import { SITE_COPY_FIELDS, SITE_COPY_LANGS, mergeSiteCopy, readSiteCopy, resolveSiteCopy } from '../site-copy.mjs'
+import { COPY } from '../i18n'
 import { imageKey, sniffImage } from '../media'
 import { originOf, siteName } from '../site'
 import type { AdminTranslation, Env, Lang, SaveTranslation } from '../types'
@@ -648,11 +650,11 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_settings',
-    description: 'Read template, layout, brand, site meta, share links, require_all_languages, head_meta, and timezone. Missing require_all_languages means true. Missing head_meta means no extra tags. Missing timezone means UTC.',
+    description: 'Read template, layout, brand, site meta, share links, require_all_languages, head_meta, timezone, and site_copy. Missing require_all_languages means true. Missing head_meta means no extra tags. Missing timezone means UTC.',
     inputSchema: {
       type: 'object',
       properties: {
-        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'timezone', 'all'] },
+        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'timezone', 'site_copy', 'all'] },
       },
     },
     async run(env, args) {
@@ -660,6 +662,7 @@ export const TOOLS: Tool[] = [
       const section = str(args.section) || 'all'
       if (section === 'all') return config
       if (section === 'timezone') return { timezone: config.timezone }
+      if (section === 'site_copy') return { site_copy: config.site_copy }
       if (section === 'head_meta') return { head_meta: config.head_meta, require_all_languages: config.require_all_languages }
       if (section === 'meta') return { meta: config.meta, timezone: config.timezone }
       if (section === 'template' || section === 'layout' || section === 'share' || section === 'brand') {
@@ -687,6 +690,61 @@ export const TOOLS: Tool[] = [
       if (!parsed.ok) throw new Error(parsed.error)
       await saveSettings(env.DB, 'head_meta', parsed.value)
       return parsed.value
+    },
+  },
+  {
+    name: 'get_site_copy',
+    description: 'Read the per-language public site copy: homepage headline (tagline), eyebrow label (kicker), the line under the headline (description), footer line, About title, and About paragraphs. stored holds only the saved overrides. effective is what each public page shows after fallback to the built-in text (description falls back to the Meta description first).',
+    inputSchema: {
+      type: 'object',
+      properties: { lang: { type: 'string', enum: [...SITE_COPY_LANGS] } },
+    },
+    async run(env, args) {
+      const config = await loadConfig(env.DB)
+      const stored = readSiteCopy(config.site_copy)
+      const langs = isLang(str(args.lang)) ? [str(args.lang) as Lang] : LANGS
+      const effective: Record<string, unknown> = {}
+      for (const lang of langs) effective[lang] = resolveSiteCopy(COPY[lang], stored, lang, config.meta.description)
+      return { fields: SITE_COPY_FIELDS, stored, effective }
+    },
+  },
+  {
+    name: 'update_site_copy',
+    description: 'Set per-language public site copy. copy is keyed by language (zh, en, ja, es, ar); each value may set tagline (≤160), kicker (≤80), description (≤400), footer (≤200), aboutTitle (≤120), and aboutBody (array of paragraphs, or one string with blank lines between paragraphs; ≤12 paragraphs). Fields you omit stay as they are. "" or null clears a field so it falls back to the built-in text; a language set to null clears that language. replace: true discards every saved override first. The site name in the footer still comes from SITE_NAME.',
+    inputSchema: {
+      type: 'object',
+      required: ['copy'],
+      properties: {
+        copy: {
+          type: 'object',
+          properties: Object.fromEntries(
+            SITE_COPY_LANGS.map((lang) => [
+              lang,
+              {
+                type: 'object',
+                properties: {
+                  tagline: { type: 'string' },
+                  kicker: { type: 'string' },
+                  description: { type: 'string' },
+                  footer: { type: 'string' },
+                  aboutTitle: { type: 'string' },
+                  aboutBody: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            ]),
+          ),
+        },
+        replace: { type: 'boolean' },
+      },
+    },
+    async run(env, args) {
+      const current = await loadConfig(env.DB)
+      const merged = mergeSiteCopy(current.site_copy, args.copy, args.replace === true)
+      if (!merged.ok) throw new Error(merged.error)
+      await saveSettings(env.DB, 'site_copy', merged.value)
+      const effective: Record<string, unknown> = {}
+      for (const lang of LANGS) effective[lang] = resolveSiteCopy(COPY[lang], merged.value, lang, current.meta.description)
+      return { stored: merged.value, effective }
     },
   },
   {

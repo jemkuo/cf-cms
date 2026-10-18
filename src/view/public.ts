@@ -6,6 +6,7 @@ import type { Article, Env, Lang, PostCard } from '../types'
 import { PAGE_SIZE } from '../db'
 import { coverPublicPath, socialImage } from '../text'
 import { shell, type Alternate } from './layout'
+import { uiFor } from '../copy'
 
 type Base = {
   env: Env
@@ -45,12 +46,12 @@ export function homeView(
   pages: number,
   tags: { slug: string; name: string }[],
 ) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   const path = page <= 1 ? `/${base.lang}/` : `/${base.lang}/?page=${page}`
   return shell({
     ...base,
     title: ui.tagline,
-    description: base.settings.meta.description || ui.description,
+    description: ui.description,
     path,
     alternates: samePath(`/${base.lang}/`),
     active: 'writing',
@@ -59,7 +60,7 @@ export function homeView(
       <header class="masthead">
         ${base.settings.layout.showKicker ? html`<p class="kicker">${ui.kicker}</p>` : ''}
         <h1>${ui.tagline}</h1>
-        <p class="dek">${base.settings.meta.description || ui.description}</p>
+        <p class="dek">${ui.description}</p>
       </header>
       ${base.settings.layout.showTags && tags.length
         ? html`<nav class="tag-row" aria-label="${ui.tagsLabel}">
@@ -82,7 +83,7 @@ export function filteredView(
   page: number,
   pages: number,
 ) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   const prefix = kind === 'tag' ? 'tags' : 'topics'
   const basePath = `/${base.lang}/${prefix}/${slug}`
   const path = page <= 1 ? basePath : `${basePath}?page=${page}`
@@ -107,7 +108,7 @@ export function filteredView(
 }
 
 export function aboutView(base: Base) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   const handle = base.settings.share.x || siteHandle(base.env)
   return shell({
     ...base,
@@ -130,7 +131,7 @@ export function aboutView(base: Base) {
 }
 
 export function articleView(base: Base, article: Article, options?: { preview?: boolean }) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   const path = `/${base.lang}/posts/${article.slug}`
   const cover = coverPublicPath(article.coverKey)
   const handle = article.authorX || siteHandle(base.env) || base.settings.share.x
@@ -207,7 +208,7 @@ export function articleView(base: Base, article: Article, options?: { preview?: 
 }
 
 export function notFoundView(base: Base) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   return shell({
     ...base,
     title: ui.notFoundTitle,
@@ -224,7 +225,7 @@ export function notFoundView(base: Base) {
 }
 
 export function schemaErrorView(base: Base) {
-  const ui = COPY[base.lang]
+  const ui = uiFor(base.lang, base.settings)
   return shell({
     ...base,
     title: ui.schemaTitle,

@@ -22,9 +22,11 @@ import type { AppEnv } from '../types'
 import { bagFromBody } from '../form'
 import { HEAD_PRESETS, parseHeadMeta } from '../head-meta.mjs'
 import { canonicalTimeZone } from '../schedule.mjs'
+import { SITE_COPY_FIELDS, SITE_COPY_LANGS, parseSiteCopy } from '../site-copy.mjs'
 import {
   brandView,
   channelsView,
+  copyView,
   headView,
   layoutView,
   metaView,
@@ -180,6 +182,26 @@ export function mountSettings(app: Hono<AppEnv>) {
     }
     await refresh(c)
     return page(c, headView(baseOf(c), 'Head tags saved.'))
+  })
+
+  app.get('/admin/copy', (c) => page(c, copyView(baseOf(c), c.req.query('ok'), c.req.query('error'))))
+  app.post('/admin/copy', async (c) => {
+    const bag = bagFromBody(await c.req.parseBody())
+    const input: Record<string, Record<string, string>> = {}
+    for (const lang of SITE_COPY_LANGS) {
+      input[lang] = {}
+      for (const field of SITE_COPY_FIELDS) input[lang][field] = String(bag[`${lang}_${field}`] || '')
+    }
+    const parsed = parseSiteCopy(input)
+    if (!parsed.ok) return page(c, copyView(baseOf(c), undefined, parsed.error), 400)
+    try {
+      await saveSettings(c.env.DB, 'site_copy', parsed.value)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save site copy'
+      return page(c, copyView(baseOf(c), undefined, message), 400)
+    }
+    await refresh(c)
+    return page(c, copyView(baseOf(c), 'Site copy saved.'))
   })
 
   app.get('/admin/share', (c) => page(c, shareView(baseOf(c), c.req.query('ok'), c.req.query('error'))))

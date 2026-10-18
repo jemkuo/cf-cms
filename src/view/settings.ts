@@ -14,7 +14,8 @@ import {
 import { HEAD_PRESETS } from '../head-meta.mjs'
 import { zoneLabel } from '../schedule.mjs'
 import { hasLogo, logoHtml, markText } from '../kit'
-import { LANG_META } from '../i18n'
+import { COPY, LANG_META } from '../i18n'
+import { readSiteCopy } from '../site-copy.mjs'
 import { NICHE_ORDER, presetById, presetsInNiche } from '../templates'
 import { siteName } from '../site'
 import type { Env } from '../types'
@@ -351,6 +352,40 @@ export function tagsView(base: Base, tags: TagAdmin[], ok?: string, error?: stri
         <label><span class="lbl">English name</span><input name="name_en"></label>
         <label><span class="lbl">中文</span><input name="name_zh"></label>
         <button type="submit">Add tag</button>
+      </form>
+    </div>`,
+  )
+}
+
+export function copyView(base: Base, ok?: string, error?: string) {
+  const stored = readSiteCopy(base.settings.site_copy)
+  return page(
+    base,
+    'Site copy',
+    'copy',
+    html`<div class="wrap">
+      <header class="page-head">
+        <p class="kicker">Site</p>
+        <h1>Site copy</h1>
+        <p class="dek">Homepage headline and eyebrow, the line under the headline, the footer line, and the About page, per language. Leave a field empty to use the built-in text shown as the placeholder. The site name in the footer still comes from SITE_NAME.</p>
+      </header>
+      ${banner(ok, error)}
+      <form method="post" action="/admin/copy" class="stack">
+        ${LANGS.map((lang) => {
+          const own = stored[lang] || {}
+          const ui = COPY[lang]
+          const dir = lang === 'ar' ? 'rtl' : 'ltr'
+          return html`<fieldset class="stack" lang="${LANG_META[lang].htmlLang}" dir="${dir}">
+            <legend>${LANG_META[lang].label} (${lang})</legend>
+            <label><span class="lbl">Homepage headline</span><input name="${lang}_tagline" value="${own.tagline || ''}" placeholder="${ui.tagline}" maxlength="160"></label>
+            <label><span class="lbl">Eyebrow label</span><input name="${lang}_kicker" value="${own.kicker || ''}" placeholder="${ui.kicker}" maxlength="80"></label>
+            <label><span class="lbl">Line under the headline (falls back to Meta description)</span><textarea name="${lang}_description" rows="2" maxlength="400" placeholder="${ui.description}">${own.description || ''}</textarea></label>
+            <label><span class="lbl">Footer line</span><input name="${lang}_footer" value="${own.footer || ''}" placeholder="${ui.footer}" maxlength="200"></label>
+            <label><span class="lbl">About page title</span><input name="${lang}_aboutTitle" value="${own.aboutTitle || ''}" placeholder="${ui.aboutTitle}" maxlength="120"></label>
+            <label><span class="lbl">About page text · blank line between paragraphs</span><textarea name="${lang}_aboutBody" rows="6" placeholder="${ui.aboutBody.join('\n\n')}">${(own.aboutBody || []).join('\n\n')}</textarea></label>
+          </fieldset>`
+        })}
+        <button type="submit">Save site copy</button>
       </form>
     </div>`,
   )

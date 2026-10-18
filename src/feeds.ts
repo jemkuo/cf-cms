@@ -1,5 +1,7 @@
 import { listFeed, listLlms, responseCacheControl, sitemapPosts, sitemapTags } from './db'
 import { COPY, LANG_META } from './i18n'
+import { loadConfig } from './config'
+import { ownCopy } from './copy'
 import { originOf, siteHandle, siteName } from './site'
 import type { Env, Lang } from './types'
 import { LANGS } from './types'
@@ -134,6 +136,7 @@ export async function rss(env: Env, lang: Lang): Promise<Response> {
   const origin = originOf(env)
   const name = siteName(env)
   const ui = COPY[lang]
+  const own = ownCopy(lang, await loadConfig(env.DB))
   const posts = await listFeed(env.DB, lang)
   const self = `${origin}/${lang}/rss.xml`
   const items = posts
@@ -155,7 +158,7 @@ export async function rss(env: Env, lang: Lang): Promise<Response> {
 <channel>
   <title>${xmlEscape(name)}</title>
   <link>${xmlEscape(`${origin}/${lang}/`)}</link>
-  <description>${xmlEscape(ui.description)}</description>
+  <description>${xmlEscape(own.description || ui.description)}</description>
   <language>${LANG_META[lang].hreflang}</language>
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${xmlEscape(self)}" rel="self" type="application/rss+xml"/>
@@ -169,10 +172,11 @@ ${items}
 export async function llmsTxt(env: Env, full: boolean): Promise<Response> {
   const origin = originOf(env)
   const rows = await listLlms(env.DB)
+  const settings = await loadConfig(env.DB)
   const lines = [
     `# ${siteName(env)}`,
     '',
-    `> ${COPY.en.description}`,
+    `> ${ownCopy('en', settings).description || COPY.en.description}`,
     '',
     'Posts are written in one source language and published in Chinese (zh-CN), English, Japanese, Spanish, and Arabic.',
     'Arabic pages are right-to-left. Each article has a summary and, when present, a FAQ block.',
@@ -180,7 +184,7 @@ export async function llmsTxt(env: Env, full: boolean): Promise<Response> {
     '',
     '## Languages',
     '',
-    ...LANGS.map((lang) => `- [${LANG_META[lang].label}](${origin}/${lang}/): ${COPY[lang].tagline}`),
+    ...LANGS.map((lang) => `- [${LANG_META[lang].label}](${origin}/${lang}/): ${ownCopy(lang, settings).tagline || COPY[lang].tagline}`),
     '',
   ]
   for (const lang of LANGS) {

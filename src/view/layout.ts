@@ -3,6 +3,7 @@ import type { SiteConfig } from '../config'
 import { poweredByMarkup } from '../footer-credit.mjs'
 import { renderHeadMeta } from '../head-meta.mjs'
 import { COPY, LANG_META } from '../i18n'
+import { ownCopy, uiFor } from '../copy'
 import { brandStyle, hasLogo, iconHref, logoHtml, markText } from '../kit'
 import { siteName } from '../site'
 import type { Env, Lang } from '../types'
@@ -59,13 +60,13 @@ function styleHref(settings: SiteConfig): string {
 
 export function shell(input: Shell) {
   const meta = LANG_META[input.lang]
-  const ui = COPY[input.lang]
+  const ui = uiFor(input.lang, input.settings)
   const origin = (input.env.SITE_URL || 'https://example.com').replace(/\/$/, '')
   const name = siteName(input.env)
   const visibleMark = markText(input.settings.brand, name)
   const brandColor = /^#[0-9a-fA-F]{6}$/.test(input.settings.brand.themeColor)
   const handle = (input.settings.share.x || input.env.SITE_X || '').replace(/^@/, '')
-  const description = input.settings.meta.description || input.description || ui.description
+  const description = ownCopy(input.lang, input.settings).description || input.settings.meta.description || input.description || COPY[input.lang].description
   const canonical = abs(origin, input.path)
   const image = socialImage(origin, input.imageKey || input.settings.meta.ogImage || null)
   const imageIsDefault = image.endsWith('/og.png')
@@ -180,6 +181,7 @@ const ADMIN_LINKS = [
   ['/admin/channels', 'Channels', 'channels'],
   ['/admin/meta', 'Meta', 'meta'],
   ['/admin/head', 'Head', 'head'],
+  ['/admin/copy', 'Copy', 'copy'],
   ['/admin/tags', 'Tags', 'tags'],
   ['/admin/share', 'Share', 'share'],
 ] as const

@@ -6,6 +6,7 @@ import { showPoweredBy } from './footer-credit.mjs'
 import { emptyHeadMeta, parseHeadMeta, type HeadMetaSettings } from './head-meta.mjs'
 import { requireAllLanguages } from './publish-gate.mjs'
 import { assertTimeZone, parseTimeZone } from './schedule.mjs'
+import { emptySiteCopy, parseSiteCopy, readSiteCopy, type SiteCopySettings } from './site-copy.mjs'
 
 export { TEMPLATE_IDS, type TemplateId }
 export const ACCENTS = ['vermilion', 'blue', 'green', 'gold', 'slate'] as const
@@ -58,7 +59,7 @@ export type BrandSettings = {
   faviconSvg: string
   faviconKey: string
 }
-export type { HeadMetaSettings }
+export type { HeadMetaSettings, SiteCopySettings }
 
 export type SiteConfig = {
   template: TemplateSettings
@@ -69,6 +70,7 @@ export type SiteConfig = {
   require_all_languages: boolean
   head_meta: HeadMetaSettings
   timezone: string
+  site_copy: SiteCopySettings
 }
 export type SettingsKey = keyof SiteConfig
 
@@ -112,6 +114,7 @@ export const DEFAULT_CONFIG: SiteConfig = {
   require_all_languages: true,
   head_meta: emptyHeadMeta(),
   timezone: 'UTC',
+  site_copy: emptySiteCopy(),
 }
 
 export const EMPTY_POST_META: PostMeta = { noindex: false, canonical: '', keywords: '', ogImage: '' }
@@ -264,9 +267,14 @@ const PARSERS = {
     return parsed.value
   },
   timezone: (input: unknown) => assertTimeZone(input),
+  site_copy: (input: unknown) => {
+    const parsed = parseSiteCopy(input)
+    if (!parsed.ok) throw new Error(parsed.error)
+    return parsed.value
+  },
 } as const
 
-const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone'] as const
+const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy'] as const
 
 export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): SiteConfig {
   return {
@@ -278,13 +286,14 @@ export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): S
     require_all_languages: requireAllLanguages(partial.require_all_languages),
     head_meta: parseHeadMetaSettings(partial.head_meta),
     timezone: parseTimeZone(partial.timezone),
+    site_copy: readSiteCopy(partial.site_copy),
   }
 }
 
 export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   try {
     const { results } = await db
-      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone')`)
+      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy')`)
       .all<{ key: string; value_json: string }>()
     const partial: Partial<Record<SettingsKey, unknown>> = {}
     for (const row of results) {

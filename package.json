@@ -25,8 +25,8 @@
     "db:seed": "node scripts/render-seed.mjs && wrangler d1 execute cf-blogger-db --local --file=seed/seed.sql",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "seed:file": "node scripts/render-seed.mjs",
-    "check": "tsc --noEmit && node scripts/check-release.mjs && node --test scripts/setup-lib.test.mjs scripts/footer-credit.test.mjs scripts/content-ops.test.mjs scripts/schedule.test.mjs",
-    "test": "node --test scripts/setup-lib.test.mjs scripts/footer-credit.test.mjs scripts/content-ops.test.mjs scripts/schedule.test.mjs",
+    "check": "tsc --noEmit && node scripts/check-release.mjs && node --test scripts/setup-lib.test.mjs scripts/footer-credit.test.mjs scripts/content-ops.test.mjs scripts/schedule.test.mjs scripts/site-copy.test.mjs scripts/mcp-stdio.test.mjs",
+    "test": "node --test scripts/setup-lib.test.mjs scripts/footer-credit.test.mjs scripts/content-ops.test.mjs scripts/schedule.test.mjs scripts/site-copy.test.mjs scripts/mcp-stdio.test.mjs",
     "mcp": "node bin/mcp-stdio.mjs",
     "setup": "node bin/create-cf-cms.mjs",
     "deploy": "wrangler pages deploy public"
