@@ -2,7 +2,9 @@
 
 **CF CMS** is an open-source multilingual blog and CMS on Cloudflare’s free tier. 免费套餐即可上线：一条脚本部署，一句话把 Agent 接上。
 
-The sample site shipped in this folder is named Field Notes. The product is CF CMS (`cf-cms`).
+**Live demo / 示例站点:** [jemai.cc](https://jemai.cc), a production blog running CF CMS on the Cloudflare free tier in all five languages.
+
+The sample site shipped in this folder is named Field Notes. Field Notes is the seed content in this repo. [jemai.cc](https://jemai.cc) is a real deployment, not that seed. The product is CF CMS (`cf-cms`).
 
 ## Why CF CMS
 
@@ -244,13 +246,15 @@ npx wrangler pages deploy public --project-name <project>
 
 CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 
+示例站点：[jemai.cc](https://jemai.cc)，用 CF CMS 跑在 Cloudflare 免费套餐上的正式博客，五种语言都有。
+
 1. Cloudflare 免费套餐：Pages、D1、R2、Workers AI，不必另租服务器。
 2. 一条脚本部署：准备域名和 Cloudflare API token，执行 `./scripts/setup.sh`。Token 只能看到一个账号时会自动填入 account id。R2 需先在仪表盘开通。已有的 D1、R2、Pages 会复用。未提供管理员密码时，随机密码写入 `.dev.vars`，不会打印出来。
 3. 给 Agent 用：原生 MCP，把上面的中文句子贴进客户端即可。
 4. 预制主题：个人技术博客、生活方式、传统企业首页、科技公司首页，各两套。
 5. 一键视觉套件：按当前模板生成配套标志和主题色。
 
-另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、标签和分享链接设置。示例站点名是 Field Notes。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
+另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、标签和分享链接设置。示例站点名是 Field Notes。Field Notes 是仓库附带的种子内容，不是线上的 jemai.cc。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
 
 公开页脚最后一行是较小、较淡的 “Powered by CF CMS”（各语言都用这句英文，CF CMS 链到 GitHub 仓库）。后台页面不显示，也不会写进 JSON-LD。默认开启。版式里没有 `show_powered_by` 时仍视为开启。在 **Layout**（`/<ADMIN_SAFEPATH>/admin/layout`）取消勾选，或用 MCP `update_layout` 传入 `{ "show_powered_by": false }` 即可关掉。`get_settings` 的 `layout` 段会返回这个字段。
 

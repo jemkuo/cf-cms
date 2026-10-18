@@ -26,11 +26,13 @@ const publishSurfaces = ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGEL
 for (const path of walk(root)) {
   if (path.endsWith('.png') || path.endsWith('.woff2') || path.endsWith('check-release.mjs')) continue
   const text = readFileSync(path, 'utf8')
-  if (banned.test(text)) throw new Error(`Private branding in ${path}`)
+  const rel = path.slice(root.length).replaceAll('\\', '/')
+  // README may name the public demo URL. Every other file still rejects that branding.
+  const branding = rel === 'README.md' ? text.replaceAll('jemai.cc', '') : text
+  if (banned.test(branding)) throw new Error(`Private branding in ${path}`)
   if (/ADMIN_PASSWORD=(?!\$\{)\S+/.test(text) && !path.endsWith('.example')) {
     throw new Error(`Password-looking value in ${path}`)
   }
-  const rel = path.slice(root.length).replaceAll('\\', '/')
   if (publishSurfaces.some((surface) => rel === surface || rel.startsWith(`${surface}/`)) && pii.test(text)) {
     throw new Error(`Personal data in published copy: ${rel}`)
   }
