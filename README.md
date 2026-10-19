@@ -2,9 +2,22 @@
 
 **CF CMS** is an open-source multilingual blog and CMS on Cloudflare’s free tier. 免费套餐即可上线：一条脚本部署，一句话把 Agent 接上。
 
-**Live demo / 示例站点:** [jemai.cc](https://jemai.cc), a production blog running CF CMS on the Cloudflare free tier in all five languages.
+**Live demos / 示例站点**
 
-The sample site shipped in this folder is named Field Notes. Field Notes is the seed content in this repo. [jemai.cc](https://jemai.cc) is a real deployment, not that seed. The product is CF CMS (`cf-cms`).
+| Site | Template | URL |
+| --- | --- | --- |
+| Production blog | blog presets | [jemai.cc](https://jemai.cc) |
+| Weaveshore Tech (fictional SaaS portal) | `harbor` | [jemai.cc/demo/weaveshore/](https://jemai.cc/demo/weaveshore/) |
+| Ridgport Machinery (fictional industrial portal) | `forge` | [jemai.cc/demo/ridgport/](https://jemai.cc/demo/ridgport/) |
+
+<p>
+<a href="https://jemai.cc/demo/weaveshore/"><img src="docs/demos/weaveshore/home.jpg" alt="Weaveshore harbor portal home" width="640"></a>
+<a href="https://jemai.cc/demo/ridgport/"><img src="docs/demos/ridgport/home.jpg" alt="Ridgport forge portal home" width="640"></a>
+</p>
+
+Same demos also answer on [weaveshore.pages.dev](https://weaveshore.pages.dev) and [ridgport.pages.dev](https://ridgport.pages.dev). Index: [jemai.cc/demo/](https://jemai.cc/demo/).
+
+The sample site shipped in this folder is named Field Notes. Field Notes is the seed content in this repo. [jemai.cc](https://jemai.cc) and the two portal demos are real deployments, not that seed. The product is CF CMS (`cf-cms`).
 
 ## Why CF CMS
 
@@ -310,7 +323,20 @@ npx wrangler pages deploy public --project-name <project>
 
 CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 
-示例站点：[jemai.cc](https://jemai.cc)，用 CF CMS 跑在 Cloudflare 免费套餐上的正式博客，五种语言都有。
+示例站点：
+
+| 站点 | 模板 | 地址 |
+| --- | --- | --- |
+| 正式博客 | 博客预设 | [jemai.cc](https://jemai.cc) |
+| 织岸科技（虚构科技门户） | `harbor` | [jemai.cc/demo/weaveshore/](https://jemai.cc/demo/weaveshore/) |
+| 砺港机械（虚构制造门户） | `forge` | [jemai.cc/demo/ridgport/](https://jemai.cc/demo/ridgport/) |
+
+<p>
+<a href="https://jemai.cc/demo/weaveshore/"><img src="docs/demos/weaveshore/home.jpg" alt="织岸 harbor 首页" width="640"></a>
+<a href="https://jemai.cc/demo/ridgport/"><img src="docs/demos/ridgport/home.jpg" alt="砺港 forge 首页" width="640"></a>
+</p>
+
+同站也可直接打开 [weaveshore.pages.dev](https://weaveshore.pages.dev) 与 [ridgport.pages.dev](https://ridgport.pages.dev)。目录页：[jemai.cc/demo/](https://jemai.cc/demo/)。
 
 1. Cloudflare 免费套餐：Pages、D1、R2、Workers AI，不必另租服务器。
 2. 一条脚本部署：准备域名和 Cloudflare API token，执行 `./scripts/setup.sh`。Token 只能看到一个账号时会自动填入 account id。R2 需先在仪表盘开通。已有的 D1、R2、Pages 会复用。未提供管理员密码时，随机密码写入 `.dev.vars`，不会打印出来。
