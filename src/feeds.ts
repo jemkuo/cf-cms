@@ -1,6 +1,8 @@
 import { listFeed, listLlms, responseCacheControl, sitemapPosts, sitemapTags } from './db'
 import { COPY, LANG_META } from './i18n'
 import { loadConfig } from './config'
+import { routeAllowed } from './portal.mjs'
+import { presetById } from './templates'
 import { ownCopy } from './copy'
 import { originOf, siteHandle, siteName } from './site'
 import type { Env, Lang } from './types'
@@ -114,6 +116,10 @@ export async function sitemapLang(env: Env, lang: Lang): Promise<Response> {
   }
   push([...LANGS], (code) => `/${code}/`)
   push([...LANGS], (code) => `/${code}/about`)
+  const preset = presetById((await loadConfig(env.DB)).template.id)
+  for (const route of ['services', 'products', 'insights', 'news', 'contact'] as const) {
+    if (routeAllowed(preset, route)) push([...LANGS], (code) => `/${code}/${route}`)
+  }
   for (const category of categories) {
     push([...LANGS], (code) => `/${code}/topics/${category}`)
   }

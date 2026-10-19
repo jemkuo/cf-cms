@@ -1,0 +1,26 @@
+{
+  "id": "harbor-weaveshore",
+  "template": "harbor",
+  "mode": "portal",
+  "sectionSchema": "saas",
+  "brand": {
+    "mark": "Weaveshore",
+    "themeColor": "#22d3ee"
+  },
+  "site_copy": {
+    "en": {
+      "tagline": "Weave infrastructure into a product you can ship",
+      "aboutTitle": "About Weaveshore",
+      "aboutBody": ["Weaveshore is a fictional studio used to preview the harbor portal."]
+    },
+    "zh": {
+      "tagline": "把复杂基础设施织成可上线的产品",
+      "aboutTitle": "关于织岸",
+      "aboutBody": ["织岸科技是 harbor 门户的虚构示例，不是真实公司。"]
+    }
+  },
+  "contact": {
+    "email": "hello@weaveshore.example"
+  },
+  "note": "Example only. seed.sql does not load this file. Apply with update_template id harbor and update_sections."
+}

@@ -55,13 +55,13 @@ Paste one sentence into Cursor, Claude, or another MCP client. Replace `$ADMIN_A
 English:
 
 ```
-CF CMS (package cf-cms) is an open-source multilingual blog and CMS on the Cloudflare free tier — Pages Functions, D1, R2, and Workers AI — with public routes for zh, en, ja, es, and ar (Arabic is RTL); the admin UI and admin APIs are only at /<ADMIN_SAFEPATH>/admin/ (ADMIN_SAFEPATH is a random secret created by setup, plain /admin returns 404, and the login session is still required on that path); connect its MCP server by posting JSON-RPC to /mcp with header Authorization: Bearer $ADMIN_API_TOKEN (local stdio proxy: npm run mcp with CF_CMS_URL) and use tools project_info, list_posts, get_post, create_post, update_post, publish_post, unpublish_post, delete_post, list_tags, upsert_tag, delete_tag, list_channels, upsert_channel, delete_channel, get_settings, get_site_copy, update_site_copy, update_template, update_layout, update_meta, update_share, update_brand, upload_logo, generate_visual_kit, list_media, upload_media, and delete_media to read the project and manage drafts, published posts, tags, channels, site and per-post meta, per-language site copy (homepage headline, footer line, About page), template, layout, share links, logo, favicon, theme color, visual kits, and R2 media.
+CF CMS (package cf-cms) is an open-source multilingual blog and CMS on the Cloudflare free tier — Pages Functions, D1, R2, and Workers AI — with public routes for zh, en, ja, es, and ar (Arabic is RTL); the admin UI and admin APIs are only at /<ADMIN_SAFEPATH>/admin/ (ADMIN_SAFEPATH is a random secret created by setup, plain /admin returns 404, and the login session is still required on that path); connect its MCP server by posting JSON-RPC to /mcp with header Authorization: Bearer $ADMIN_API_TOKEN (local stdio proxy: npm run mcp with CF_CMS_URL) and use tools project_info, list_posts, get_post, create_post, update_post, publish_post, unpublish_post, delete_post, list_tags, upsert_tag, delete_tag, list_channels, upsert_channel, delete_channel, get_settings, get_site_copy, update_site_copy, get_sections, update_sections, update_template, update_layout, update_meta, update_share, update_brand, upload_logo, generate_visual_kit, list_media, upload_media, and delete_media to read the project and manage drafts, published posts, tags, channels, site and per-post meta, per-language site copy (homepage headline, footer line, About page), portal landing sections, template, layout, share links, logo, favicon, theme color, visual kits, and R2 media.
 ```
 
 中文:
 
 ```
-CF CMS（包名 cf-cms）是跑在 Cloudflare 免费套餐上的开源多语言博客与 CMS，使用 Pages Functions、D1、R2 和 Workers AI，公开路由为 zh、en、ja、es、ar（阿拉伯语从右到左）；后台页面和后台接口只在 /<ADMIN_SAFEPATH>/admin/（ADMIN_SAFEPATH 由安装脚本随机生成，直接访问 /admin 会返回 404，到达该路径后仍要登录会话）；把 MCP 连到 /mcp，请求头使用 Authorization: Bearer $ADMIN_API_TOKEN（本地 stdio 代理是设置 CF_CMS_URL 后执行 npm run mcp），并用 project_info、list_posts、get_post、create_post、update_post、publish_post、unpublish_post、delete_post、list_tags、upsert_tag、delete_tag、list_channels、upsert_channel、delete_channel、get_settings、get_site_copy、update_site_copy、update_template、update_layout、update_meta、update_share、update_brand、upload_logo、generate_visual_kit、list_media、upload_media、delete_media 阅读站点并管理草稿、发布、标签、栏目、站点与文章 meta、分语言站点文案（首页标题、页脚、关于页）、模板、版式、分享链接、标志、favicon、主题色、视觉套件和 R2 媒体。
+CF CMS（包名 cf-cms）是跑在 Cloudflare 免费套餐上的开源多语言博客与 CMS，使用 Pages Functions、D1、R2 和 Workers AI，公开路由为 zh、en、ja、es、ar（阿拉伯语从右到左）；后台页面和后台接口只在 /<ADMIN_SAFEPATH>/admin/（ADMIN_SAFEPATH 由安装脚本随机生成，直接访问 /admin 会返回 404，到达该路径后仍要登录会话）；把 MCP 连到 /mcp，请求头使用 Authorization: Bearer $ADMIN_API_TOKEN（本地 stdio 代理是设置 CF_CMS_URL 后执行 npm run mcp），并用 project_info、list_posts、get_post、create_post、update_post、publish_post、unpublish_post、delete_post、list_tags、upsert_tag、delete_tag、list_channels、upsert_channel、delete_channel、get_settings、get_site_copy、update_site_copy、get_sections、update_sections、update_template、update_layout、update_meta、update_share、update_brand、upload_logo、generate_visual_kit、list_media、upload_media、delete_media 阅读站点并管理草稿、发布、标签、栏目、站点与文章 meta、分语言站点文案（首页标题、页脚、关于页）、门户落地区块、模板、版式、分享链接、标志、favicon、主题色、视觉套件和 R2 媒体。
 ```
 
 Cursor, remote server (recommended; the token stays in your environment, not in git). Put this in `~/.cursor/mcp.json` or `.cursor/mcp.json`, then export `CFCMS_TOKEN` before you start Cursor:
@@ -257,6 +257,33 @@ MCP: `get_site_copy` returns `stored` (saved overrides) and `effective` (what ea
 }
 ```
 
+## Portal templates
+
+Harbor and Forge are portal templates. Blog presets (`paper` through `orbit`) stay on `mode: blog`: the home page is still the post list, and `/services`, `/products`, `/insights`, `/news`, and `/contact` are 404.
+
+| Template | Niche | Home | Routes | Sections |
+|----------|-------|------|--------|----------|
+| `harbor` | `tech-company` | Landing | `/services`, `/insights`, `/contact` | `saas` |
+| `forge` | `manufacturing` | Landing | `/products`, `/news`, `/contact` | `industrial` |
+
+`/:lang/about` and `/:lang/posts/:slug` stay on both. Insights and news are the published post list. The other template's routes are 404. The shell sets `data-template` and, in portal mode, `data-mode="portal"`, then loads `/themes/harbor.css` or `/themes/forge.css`.
+
+Landing blocks live in the `sections` setting. There is no pages table. `saas` keys: hero, trust, capabilities, stats, cta, team, why, contact. `industrial` keys: hero, trust, productLines, stats, cta, capabilities, contact. About stays in site copy. Empty sections fall back to built-in demo copy (Weaveshore for Harbor, Ridgport for Forge). `get_sections` returns `stored` and `effective`. `update_sections` patches the languages you send; `""` or `null` clears a field; `replace: true` starts over. `update_template` clears saved sections when the section schema changes, including Harbor to Forge.
+
+The contact form is a stub. It does not send mail or store what was typed.
+
+`seed/recipes/harbor-weaveshore.example.json` and `seed/recipes/forge-ridgport.example.json` are optional sample recipes. `seed.sql` does not load them. Addresses in those files use the `.example` domain.
+
+Pick Harbor or Forge on the Template screen. Manufacturing is its own group.
+
+## Local bootstrap
+
+`npm run mcp` proxies the hosted `/mcp` tools and also exposes three local tools: `setup_preflight`, `setup_deploy`, and `setup_health`. They are not on the site's `/mcp` endpoint, because that process cannot create the Pages project it is running on.
+
+Set `CLOUDFLARE_API_TOKEN` in the environment before you start the proxy. Do not pass the token as a tool argument. The tools do not print it. `setup_preflight` is a dry run. `setup_deploy` runs setup with `--yes`. Pass `domain` or `skip_domain`. `seed: true` loads sample posts and deletes existing posts. `replace_dns: true` is the only way this tool overwrites DNS records. The deploy result masks the admin safepath (`/<safepath>/admin/`). `setup_health` reads `{baseUrl}/health`.
+
+After deploy, content tools (`update_brand`, `update_site_copy`, `update_sections`, `create_post`, `publish_post`) stay on the site `/mcp`. Point `CF_CMS_URL` and `ADMIN_API_TOKEN` at that site. Read the admin token from `.dev.vars`, not from the chat.
+
 ## Footer credit
 
 Every public page, in every template and language, ends the footer with a small muted line: Powered by [CF CMS](https://github.com/jemkuo/cf-cms). The wording stays English, including on Arabic pages. Admin screens do not show it, and it is not part of Article JSON-LD. It is on unless the layout setting `show_powered_by` is false. A saved layout that has no such field stays on. Turn it off under **Layout** (`/<ADMIN_SAFEPATH>/admin/layout`), or with MCP `update_layout` `{ "show_powered_by": false }`. `get_settings` returns the field on the `layout` section.
@@ -294,6 +321,12 @@ CF CMS 是可独立开源发布的多语言博客与 CMS，包名 `cf-cms`。
 另外包含五种语言的 SEO / GEO（阿拉伯语从右到左）、隐藏的后台入口 `/<ADMIN_SAFEPATH>/admin/`（直接访问 `/admin` 为 404），以及模板、标志、版式、栏目、meta、站点文案、标签和分享链接设置。示例站点名是 Field Notes。Field Notes 是仓库附带的种子内容，不是线上的 jemai.cc。本地是 `npm run db:setup && npm run dev`，地址 `http://127.0.0.1:8791`。不要把 `.dev.vars` 或 Cloudflare API token 提交进仓库。
 
 公开页脚最后一行是较小、较淡的 “Powered by CF CMS”（各语言都用这句英文，CF CMS 链到 GitHub 仓库）。后台页面不显示，也不会写进 JSON-LD。默认开启。版式里没有 `show_powered_by` 时仍视为开启。在 **Layout**（`/<ADMIN_SAFEPATH>/admin/layout`）取消勾选，或用 MCP `update_layout` 传入 `{ "show_powered_by": false }` 即可关掉。`get_settings` 的 `layout` 段会返回这个字段。
+
+**门户模板** Harbor 与 Forge。博客预设（`paper` 到 `orbit`）仍是 `mode: blog`，首页仍是文章列表，`/services`、`/products`、`/insights`、`/news`、`/contact` 返回 404。Harbor 的细分是 `tech-company`，首页是落地页，路由为 `/services`、`/insights`、`/contact`，区块模式 `saas`。Forge 的细分是 `manufacturing`（制造），首页是落地页，路由为 `/products`、`/news`、`/contact`，区块模式 `industrial`。`/:lang/about` 和 `/:lang/posts/:slug` 两边都保留。洞察和新闻就是已发布文章。另一个模板的路由会 404。门户模式会设置 `data-template` 和 `data-mode="portal"`，并加载 `/themes/harbor.css` 或 `/themes/forge.css`。
+
+落地区块存在设置键 `sections`，没有页面表。`saas` 的键：hero、trust、capabilities、stats、cta、team、why、contact。`industrial` 的键：hero、trust、productLines、stats、cta、capabilities、contact。关于页仍用站点文案。没保存过区块时用内置演示文案（Harbor 为织岸 / Weaveshore，Forge 为砺港 / Ridgport）。MCP `get_sections` 返回 `stored` 和 `effective`。`update_sections` 按语言修改，`""` 或 `null` 清空字段，`replace: true` 从头开始。`update_template` 在区块模式变化时清空已存区块，包括从 Harbor 换到 Forge。联系表单是占位：不发信，也不保存填写内容。`seed/recipes/harbor-weaveshore.example.json` 和 `seed/recipes/forge-ridgport.example.json` 是可选示例，`seed.sql` 不会加载它们，里面的邮箱只用 `.example` 域名。在模板页可以选择 Harbor 或 Forge，制造是单独一组。
+
+**本地引导** `npm run mcp` 在转发站点 `/mcp` 工具之外，还提供三个只在本地 stdio 里的工具：`setup_preflight`、`setup_deploy`、`setup_health`。它们不在站点的 `/mcp` 上，因为正在运行的 Pages 进程不能创建自己。先在环境变量里设置 `CLOUDFLARE_API_TOKEN`，不要把 token 当作工具参数传入，工具也不会把它打印出来。`setup_preflight` 是试运行。`setup_deploy` 带 `--yes` 执行安装。必须传 `domain` 或 `skip_domain`。`seed: true` 会写入示例文章并删除已有文章。只有 `replace_dns: true` 才会覆盖 DNS 记录。部署结果里的后台路径会被遮成 `/<safepath>/admin/`。`setup_health` 请求 `{baseUrl}/health`。部署之后，内容工具（`update_brand`、`update_site_copy`、`update_sections`、`create_post`、`publish_post`）仍走站点 `/mcp`，用 `CF_CMS_URL` 和 `ADMIN_API_TOKEN` 指向该站。后台 token 从 `.dev.vars` 读取，不要贴进对话。
 
 **站点文案**（`/<ADMIN_SAFEPATH>/admin/copy`，Copy）按语言修改原来写死在 `src/i18n.ts` 里的公开文字：首页大标题 `tagline`、标题上方的眉题 `kicker`、标题下的一句话 `description`、页脚那句 `footer`，以及关于页的标题 `aboutTitle` 和段落 `aboutBody`。每项都可以留空，留空就显示内置文字，所以从没保存过这一页的站点和以前完全一样。`description` 先回落到 Meta 描述，再回落到内置文字。页脚版权仍然用 `SITE_NAME`。设置键是 `site_copy`，和其他设置一样存在 D1，不需要迁移。保存了标题或描述时，`llms.txt` 和 RSS 也会用它。MCP 用 `get_site_copy` 读取（`stored` 是已保存的覆盖，`effective` 是页面实际显示的内容），用 `update_site_copy` 按字段修改：没写的字段保持不变，`""` 或 `null` 清空该字段，某种语言设为 `null` 清空该语言，`replace: true` 先全部清空。长度上限：tagline 160、kicker 80、description 400、footer 200、aboutTitle 120 个字符，aboutBody 最多 12 段、每段 2000 字符。
 

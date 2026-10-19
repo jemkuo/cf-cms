@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="#f4f6f8"/>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8a939e"/><stop offset="100%" stop-color="#4a5560"/></linearGradient>
+<linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e8ecef"/><stop offset="100%" stop-color="#b8c0c8"/></linearGradient></defs>
+<g transform="translate(420,180)">
+  <rect x="40" y="80" width="360" height="220" rx="12" fill="url(#g)"/>
+  <rect x="20" y="60" width="400" height="40" rx="4" fill="url(#s)"/>
+  <circle cx="220" cy="190" r="70" fill="#2d343c" stroke="#c5ccd3" stroke-width="8"/>
+  <circle cx="220" cy="190" r="28" fill="#9aa3ad"/>
+  <rect x="0" y="280" width="440" height="28" rx="4" fill="#5c6670"/>
+  <circle cx="50" cy="294" r="8" fill="#d0d6dc"/><circle cx="390" cy="294" r="8" fill="#d0d6dc"/>
+</g>
+<text x="640" y="660" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="22">Ridgport · Precision gearbox (illustration)</text>
+</svg>

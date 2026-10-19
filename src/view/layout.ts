@@ -5,7 +5,9 @@ import { renderHeadMeta } from '../head-meta.mjs'
 import { COPY, LANG_META } from '../i18n'
 import { ownCopy, uiFor } from '../copy'
 import { brandStyle, hasLogo, iconHref, logoHtml, markText } from '../kit'
+import { PORTAL_NAV, templateMode } from '../portal.mjs'
 import { siteName } from '../site'
+import { presetById } from '../templates'
 import type { Env, Lang } from '../types'
 import { LANGS } from '../types'
 import { socialImage, xmlEscape } from '../text'
@@ -29,7 +31,7 @@ export type Shell = {
   modified?: string | null
   tags?: string[]
   hasXEmbed?: boolean
-  active?: 'writing' | 'about'
+  active?: 'writing' | 'about' | 'home' | 'services' | 'products' | 'insights' | 'news' | 'contact'
   admin?: boolean
   adminNav?: boolean
   activeAdmin?: string
@@ -58,6 +60,13 @@ function styleHref(settings: SiteConfig): string {
   return `/styles.css?v=${token}`
 }
 
+function portalStyle(settings: SiteConfig): string {
+  const preset = presetById(settings.template.id)
+  if (!preset || templateMode(preset) !== 'portal') return ''
+  if (preset.cssPack !== 'harbor' && preset.cssPack !== 'forge') return ''
+  return `/themes/${preset.cssPack}.css?v=1`
+}
+
 export function shell(input: Shell) {
   const meta = LANG_META[input.lang]
   const ui = uiFor(input.lang, input.settings)
@@ -76,12 +85,15 @@ export function shell(input: Shell) {
   const xEmbed = input.hasXEmbed
     ? html`<script async nonce="${input.nonce}" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
     : ''
+  const preset = presetById(input.settings.template.id)
+  const portal = !input.admin && templateMode(preset) === 'portal'
+  const themeHref = portalStyle(input.settings)
   const json = (input.jsonLd ?? []).map((entry) => {
     const payload = JSON.stringify(entry).replace(/</g, '\\u003c')
     return raw(`<script type="application/ld+json" nonce="${input.nonce}">${payload}</script>`)
   })
   return html`<!DOCTYPE html>
-<html lang="${meta.htmlLang}" dir="${meta.dir}" data-template="${input.settings.template.id}" data-accent="${input.settings.template.accent}" data-radius="${input.settings.template.radius}" data-font="${input.settings.template.font}" data-width="${input.settings.layout.width}" data-header="${input.settings.layout.header}" data-home="${input.settings.layout.home}"${brandColor ? raw(' data-brand-color="1"') : ''}>
+<html lang="${meta.htmlLang}" dir="${meta.dir}" data-template="${input.settings.template.id}" data-accent="${input.settings.template.accent}" data-radius="${input.settings.template.radius}" data-font="${input.settings.template.font}" data-width="${input.settings.layout.width}" data-header="${input.settings.layout.header}" data-home="${input.settings.layout.home}"${brandColor ? raw(' data-brand-color="1"') : ''}${portal ? raw(' data-mode="portal"') : ''}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -132,11 +144,13 @@ export function shell(input: Shell) {
   <script nonce="${input.nonce}">(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   ${input.admin ? '' : raw(renderHeadMeta(input.settings.head_meta))}
   <link rel="stylesheet" href="${styleHref(input.settings)}">
+  ${themeHref ? html`<link rel="stylesheet" href="${themeHref}">` : ''}
   ${json}
 </head>
 <body>
   <a class="skip" href="#main">${ui.skip}</a>
-  ${input.admin ? adminHeader(input, visibleMark) : publicHeader(input, ui, visibleMark)}
+  ${portal && preset?.cssPack === 'harbor' ? raw('<div class="mesh" aria-hidden="true"></div>') : ''}
+  ${input.admin ? adminHeader(input, visibleMark) : portal ? portalHeader(input, visibleMark) : publicHeader(input, ui, visibleMark)}
   <main id="main">
     ${input.body}
   </main>
@@ -145,6 +159,40 @@ export function shell(input: Shell) {
   <script nonce="${input.nonce}" src="/site.js"></script>
 </body>
 </html>`
+}
+
+function portalHeader(input: Shell, visibleMark: string) {
+  const lang = input.lang
+  const preset = presetById(input.settings.template.id)
+  const nav = PORTAL_NAV[lang]
+  const industrial = preset?.sectionSchema === 'industrial'
+  const links: { key: Shell['active']; href: string; label: string }[] = [
+    { key: 'home', href: `/${lang}/`, label: nav.home },
+    industrial
+      ? { key: 'products', href: `/${lang}/products`, label: nav.products }
+      : { key: 'services', href: `/${lang}/services`, label: nav.services },
+    { key: 'about', href: `/${lang}/about`, label: nav.about },
+    industrial
+      ? { key: 'news', href: `/${lang}/news`, label: nav.news }
+      : { key: 'insights', href: `/${lang}/insights`, label: nav.insights },
+    { key: 'contact', href: `/${lang}/contact`, label: nav.contact },
+  ]
+  return html`<header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/${lang}/">
+        ${hasLogo(input.settings.brand) ? logoHtml(input.settings.brand) : html`<span class="brand-mark" aria-hidden="true"></span>`}
+        <span class="brand-text"><strong>${visibleMark}</strong><span>${preset?.label || ''}</span></span>
+      </a>
+      <nav class="nav" aria-label="${nav.home}">
+        ${links.map((item) => html`<a href="${item.href}" aria-current="${input.active === item.key ? 'page' : 'false'}">${item.label}</a>`)}
+      </nav>
+      <div class="header-cta">
+        ${langSwitch(input)}
+        <a class="btn btn-primary btn-sm" href="/${lang}/contact">${nav.contact}</a>
+        <button class="menu-btn" type="button" data-portal-menu aria-expanded="false">${COPY[lang].menu}</button>
+      </div>
+    </div>
+  </header>`
 }
 
 function publicHeader(input: Shell, ui: (typeof COPY)[Lang], visibleMark: string) {

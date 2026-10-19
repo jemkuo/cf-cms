@@ -1,0 +1,27 @@
+{
+  "id": "forge-ridgport",
+  "template": "forge",
+  "mode": "portal",
+  "sectionSchema": "industrial",
+  "niche": "manufacturing",
+  "brand": {
+    "mark": "Ridgport",
+    "themeColor": "#1d4ed8"
+  },
+  "site_copy": {
+    "en": {
+      "tagline": "Housings, shafts, and short-run machining",
+      "aboutTitle": "About Ridgport",
+      "aboutBody": ["Ridgport is a fictional machinery works used to preview the forge portal."]
+    },
+    "zh": {
+      "tagline": "箱体、轴系和小批量机加",
+      "aboutTitle": "关于砺港",
+      "aboutBody": ["砺港机械是 forge 门户的虚构示例，不是真实公司。"]
+    }
+  },
+  "contact": {
+    "email": "sales@ridgport.example"
+  },
+  "note": "Example only. seed.sql does not load this file. Apply with update_template id forge and update_sections."
+}

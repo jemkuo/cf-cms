@@ -55,7 +55,7 @@ export function templateView(base: Base, ok?: string, error?: string) {
       <header class="page-head">
         <p class="kicker">Frontend</p>
         <h1>Template</h1>
-        <p class="dek">Choosing another template applies its accent, type, and layout. Generate a visual kit when you also want a matching logo. The kit leaves the site description and title suffix alone, so each language keeps its own homepage line.</p>
+        <p class="dek">Choosing another template applies its accent, type, and layout. Harbor and Forge are portals: the home page is a landing, with its own routes and section JSON. Switching between blog, Harbor, and Forge clears saved sections when the section schema changes. Generate a visual kit when you also want a matching logo. The kit leaves the site description and title suffix alone, so each language keeps its own homepage line.</p>
       </header>
       ${banner(ok, error)}
       <form method="post" action="/admin/template" class="stack">

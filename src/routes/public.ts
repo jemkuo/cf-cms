@@ -4,10 +4,15 @@ import { channelLabel } from '../config'
 import { PAGE_SIZE, getArticle, listPublished, listTagCloud, publishedSource, responseCacheControl, schemaReady, tagExists, tagName } from '../db'
 import { llmsTxt, robotsTxt, rss, sitemapIndex, sitemapLang } from '../feeds'
 import { COPY } from '../i18n'
+import { homeKind, routeAllowed } from '../portal.mjs'
+import { resolveSections } from '../sections.mjs'
 import { isSchemaError } from '../site'
 import type { AppEnv, Lang } from '../types'
 import { isLang, negotiate } from '../text'
+import { presetById } from '../templates'
 import { aboutView, articleView, filteredView, homeView, notFoundView, schemaErrorView } from '../view/public'
+import { harborContact, harborInsights, harborLanding, harborServices } from '../view/portal-harbor'
+import { forgeContact, forgeLanding, forgeNews, forgeProducts } from '../view/portal-forge'
 import { ownCopy } from '../copy'
 
 function pageOf(raw: string | undefined): number {
@@ -107,6 +112,14 @@ export function mountPublic(app: Hono<AppEnv>) {
   app.get('/:lang{zh|en|ja|es|ar}/', async (c) => {
     const lang = langParam(c)
     if (!lang) return c.notFound()
+    const preset = presetById(c.get('settings').template.id)
+    if (homeKind(preset) === 'landing') {
+      const schema = preset?.sectionSchema === 'industrial' ? 'industrial' : 'saas'
+      const sections = resolveSections(schema, c.get('settings').sections, lang)
+      const { posts } = await listPublished(c.env.DB, lang, { limit: 3, offset: 0 })
+      const view = schema === 'industrial' ? forgeLanding(base(c, lang), sections, posts) : harborLanding(base(c, lang), sections, posts)
+      return send(c, view)
+    }
     const page = pageOf(c.req.query('page'))
     const [{ posts, total }, tags] = await Promise.all([
       listPublished(c.env.DB, lang, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
@@ -115,6 +128,50 @@ export function mountPublic(app: Hono<AppEnv>) {
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
     if (page > pages) return c.notFound()
     return send(c, homeView(base(c, lang), posts, page, pages, tags))
+  })
+
+  app.get('/:lang{zh|en|ja|es|ar}/services', async (c) => {
+    const lang = langParam(c)
+    if (!lang) return c.notFound()
+    if (!allowed(c, 'services')) return missing(c, lang)
+    const sections = resolveSections('saas', c.get('settings').sections, lang)
+    return send(c, harborServices(base(c, lang), sections))
+  })
+
+  app.get('/:lang{zh|en|ja|es|ar}/products', async (c) => {
+    const lang = langParam(c)
+    if (!lang) return c.notFound()
+    if (!allowed(c, 'products')) return missing(c, lang)
+    const sections = resolveSections('industrial', c.get('settings').sections, lang)
+    return send(c, forgeProducts(base(c, lang), sections))
+  })
+
+  app.get('/:lang{zh|en|ja|es|ar}/insights', async (c) => {
+    const lang = langParam(c)
+    if (!lang) return c.notFound()
+    if (!allowed(c, 'insights')) return missing(c, lang)
+    const page = pageOf(c.req.query('page'))
+    const { posts, total } = await listPublished(c.env.DB, lang, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+    if (page > pages && total > 0) return c.notFound()
+    return send(c, harborInsights(base(c, lang), posts, page, pages))
+  })
+
+  app.get('/:lang{zh|en|ja|es|ar}/news', async (c) => {
+    const lang = langParam(c)
+    if (!lang) return c.notFound()
+    if (!allowed(c, 'news')) return missing(c, lang)
+    const page = pageOf(c.req.query('page'))
+    const { posts, total } = await listPublished(c.env.DB, lang, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+    if (page > pages && total > 0) return c.notFound()
+    return send(c, forgeNews(base(c, lang), posts, page, pages))
+  })
+
+  app.get('/:lang{zh|en|ja|es|ar}/contact', (c) => contactPage(c, false))
+  app.post('/:lang{zh|en|ja|es|ar}/contact', async (c) => {
+    await c.req.parseBody().catch(() => ({}))
+    return contactPage(c, true)
   })
 
   app.get('/:lang{zh|en|ja|es|ar}/about', async (c) => {
@@ -191,6 +248,21 @@ export function mountPublic(app: Hono<AppEnv>) {
     }
     return c.html(notFoundView(base(c, lang)), 500, { 'cache-control': 'no-store' })
   })
+}
+
+function allowed(c: Context<AppEnv>, route: string): boolean {
+  return routeAllowed(presetById(c.get('settings').template.id), route)
+}
+
+async function contactPage(c: Context<AppEnv>, sent: boolean) {
+  const lang = langParam(c)
+  if (!lang) return c.notFound()
+  if (!allowed(c, 'contact')) return missing(c, lang)
+  const preset = presetById(c.get('settings').template.id)
+  const schema = preset?.sectionSchema === 'industrial' ? 'industrial' : 'saas'
+  const sections = resolveSections(schema, c.get('settings').sections, lang)
+  const view = schema === 'industrial' ? forgeContact(base(c, lang), sections, sent) : harborContact(base(c, lang), sections, sent)
+  return send(c, view)
 }
 
 function base(c: Context<AppEnv>, lang: Lang) {

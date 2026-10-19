@@ -10,10 +10,14 @@ export const TEMPLATE_IDS = [
   'civic',
   'launch',
   'orbit',
+  'harbor',
+  'forge',
 ] as const
 
 export type TemplateId = (typeof TEMPLATE_IDS)[number]
-export type Niche = 'kit' | 'tech-blog' | 'lifestyle' | 'business' | 'tech-company'
+export type Niche = 'kit' | 'tech-blog' | 'lifestyle' | 'business' | 'tech-company' | 'manufacturing'
+export type TemplateMode = 'blog' | 'portal'
+export type SectionSchemaId = '' | 'saas' | 'industrial'
 export type MarkShape = 'square' | 'rounded' | 'bars' | 'circle' | 'ring' | 'shield' | 'pill' | 'slash'
 
 export type TemplatePreset = {
@@ -37,7 +41,13 @@ export type TemplatePreset = {
   shape: MarkShape
   description: string
   titleSuffix: string
+  mode: TemplateMode
+  cssPack: '' | 'harbor' | 'forge'
+  sectionSchema: SectionSchemaId
 }
+
+type BlogId = Exclude<TemplateId, 'harbor' | 'forge'>
+type BlogPreset = Omit<TemplatePreset, 'mode' | 'cssPack' | 'sectionSchema'>
 
 const kit = {
   showAuthor: true,
@@ -46,7 +56,7 @@ const kit = {
   showKicker: true,
 } as const
 
-export const PRESETS: Record<TemplateId, TemplatePreset> = {
+const BLOG_PRESETS: Record<BlogId, BlogPreset> = {
   paper: {
     id: 'paper',
     label: 'Paper',
@@ -270,7 +280,67 @@ export const PRESETS: Record<TemplateId, TemplatePreset> = {
   },
 }
 
-export const NICHE_ORDER: Niche[] = ['tech-blog', 'lifestyle', 'business', 'tech-company', 'kit']
+function asBlog(preset: BlogPreset): TemplatePreset {
+  return { mode: 'blog', cssPack: '', sectionSchema: '', ...preset }
+}
+
+const blogIds = Object.keys(BLOG_PRESETS) as BlogId[]
+
+export const PRESETS: Record<TemplateId, TemplatePreset> = {
+  ...(Object.fromEntries(blogIds.map((id) => [id, asBlog(BLOG_PRESETS[id])])) as Record<BlogId, TemplatePreset>),
+  harbor: {
+    id: 'harbor',
+    label: 'Harbor',
+    niche: 'tech-company',
+    nicheLabel: 'Tech company homepage',
+    reference: 'Weaveshore, a fictional dark SaaS portal.',
+    blurb: 'A dark SaaS portal with services, insights, and a contact page.',
+    accent: 'slate',
+    radius: 'soft',
+    font: 'sans',
+    width: 'wide',
+    header: 'bar',
+    home: 'list',
+    showAuthor: false,
+    showTags: true,
+    showShare: true,
+    showKicker: true,
+    themeColor: '#22d3ee',
+    shape: 'rounded',
+    description: 'Cloud, automation, and data for teams that ship on the edge.',
+    titleSuffix: 'Harbor',
+    mode: 'portal',
+    cssPack: 'harbor',
+    sectionSchema: 'saas',
+  },
+  forge: {
+    id: 'forge',
+    label: 'Forge',
+    niche: 'manufacturing',
+    nicheLabel: 'Manufacturing',
+    reference: 'Ridgport, a fictional light industrial portal.',
+    blurb: 'A light industrial portal with products, news, and a contact page.',
+    accent: 'blue',
+    radius: 'soft',
+    font: 'sans',
+    width: 'wide',
+    header: 'bar',
+    home: 'list',
+    showAuthor: false,
+    showTags: true,
+    showShare: true,
+    showKicker: true,
+    themeColor: '#1d4ed8',
+    shape: 'shield',
+    description: 'Housings, shafts, and short-run machining.',
+    titleSuffix: 'Forge',
+    mode: 'portal',
+    cssPack: 'forge',
+    sectionSchema: 'industrial',
+  },
+}
+
+export const NICHE_ORDER: Niche[] = ['tech-blog', 'lifestyle', 'business', 'tech-company', 'manufacturing', 'kit']
 
 export function presetById(id: string): TemplatePreset | null {
   return (TEMPLATE_IDS as readonly string[]).includes(id) ? PRESETS[id as TemplateId] : null

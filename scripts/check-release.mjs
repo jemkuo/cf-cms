@@ -24,7 +24,7 @@ const banned = /jemai\.cc|jemai_cc|jemai_session|Jemai/i
 const pii = /Jem\s*Guo|\bAda\b|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b(?:\+?\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/
 const publishSurfaces = ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md', 'CODE_OF_CONDUCT.md', 'onboarding.json', 'wrangler.toml', 'seed', 'src/i18n.ts', 'public']
 for (const path of walk(root)) {
-  if (path.endsWith('.png') || path.endsWith('.woff2') || path.endsWith('check-release.mjs')) continue
+  if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.woff2') || path.endsWith('check-release.mjs')) continue
   const text = readFileSync(path, 'utf8')
   const rel = path.slice(root.length).replaceAll('\\', '/')
   // README may name the public demo URL. Every other file still rejects that branding.
@@ -33,7 +33,9 @@ for (const path of walk(root)) {
   if (/ADMIN_PASSWORD=(?!\$\{)\S+/.test(text) && !path.endsWith('.example')) {
     throw new Error(`Password-looking value in ${path}`)
   }
-  if (publishSurfaces.some((surface) => rel === surface || rel.startsWith(`${surface}/`)) && pii.test(text)) {
+  // Sample recipes may use reserved .example addresses. Real addresses stay banned.
+  const published = rel.endsWith('.example.json') ? text.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*\.example\b/gi, '') : text
+  if (publishSurfaces.some((surface) => rel === surface || rel.startsWith(`${surface}/`)) && pii.test(published)) {
     throw new Error(`Personal data in published copy: ${rel}`)
   }
 }

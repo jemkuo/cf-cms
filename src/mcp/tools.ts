@@ -14,6 +14,7 @@ import {
   parseSiteMeta,
   parseTemplate,
   saveSettings,
+  saveTemplateChoice,
   upsertChannel,
   upsertTag,
 } from '../config'
@@ -34,6 +35,7 @@ import { allLanguagesOption, publishBlockers, refusalText } from '../publish-gat
 import { assertTimeZone, matchesListStatus, parsePublishAt, visibilityOf } from '../schedule.mjs'
 import { parseHeadMeta } from '../head-meta.mjs'
 import { SITE_COPY_FIELDS, SITE_COPY_LANGS, mergeSiteCopy, readSiteCopy, resolveSiteCopy } from '../site-copy.mjs'
+import { INDUSTRIAL_FIELDS, SAAS_FIELDS, mergeSections, readSections, resolveSections, sectionSchemaOf } from '../sections.mjs'
 import { COPY } from '../i18n'
 import { imageKey, sniffImage } from '../media'
 import { originOf, siteName } from '../site'
@@ -350,6 +352,8 @@ export const TOOLS: Tool[] = [
           label: PRESETS[id].label,
           niche: PRESETS[id].nicheLabel,
           reference: PRESETS[id].reference,
+          mode: PRESETS[id].mode,
+          sectionSchema: PRESETS[id].sectionSchema,
         })),
         counts: {
           posts: posts.length,
@@ -650,11 +654,11 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_settings',
-    description: 'Read template, layout, brand, site meta, share links, require_all_languages, head_meta, timezone, and site_copy. Missing require_all_languages means true. Missing head_meta means no extra tags. Missing timezone means UTC.',
+    description: 'Read template, layout, brand, site meta, share links, require_all_languages, head_meta, timezone, site_copy, and sections. Missing require_all_languages means true. Missing head_meta means no extra tags. Missing timezone means UTC. Missing sections means the portal demo copy.',
     inputSchema: {
       type: 'object',
       properties: {
-        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'timezone', 'site_copy', 'all'] },
+        section: { type: 'string', enum: ['template', 'layout', 'meta', 'share', 'brand', 'head_meta', 'timezone', 'site_copy', 'sections', 'all'] },
       },
     },
     async run(env, args) {
@@ -663,6 +667,7 @@ export const TOOLS: Tool[] = [
       if (section === 'all') return config
       if (section === 'timezone') return { timezone: config.timezone }
       if (section === 'site_copy') return { site_copy: config.site_copy }
+      if (section === 'sections') return { sections: config.sections }
       if (section === 'head_meta') return { head_meta: config.head_meta, require_all_languages: config.require_all_languages }
       if (section === 'meta') return { meta: config.meta, timezone: config.timezone }
       if (section === 'template' || section === 'layout' || section === 'share' || section === 'brand') {
@@ -748,8 +753,50 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'get_sections',
+    description:
+      'Read portal landing sections for the active template. harbor uses schema saas. forge uses schema industrial. stored holds saved overrides. effective is what the landing shows after demo-copy fallback. Blog templates return an empty schema. About stays in site_copy. Insights and news are posts.',
+    inputSchema: {
+      type: 'object',
+      properties: { lang: { type: 'string', enum: [...SITE_COPY_LANGS] } },
+    },
+    async run(env, args) {
+      const config = await loadConfig(env.DB)
+      const schema = sectionSchemaOf(presetById(config.template.id))
+      const stored = readSections(config.sections)
+      const langs = isLang(str(args.lang)) ? [str(args.lang) as Lang] : LANGS
+      const effective: Record<string, unknown> = {}
+      for (const lang of langs) effective[lang] = schema ? resolveSections(schema, stored, lang) : null
+      return { schema, fields: schema === 'saas' ? SAAS_FIELDS : schema === 'industrial' ? INDUSTRIAL_FIELDS : [], stored, effective }
+    },
+  },
+  {
+    name: 'update_sections',
+    description:
+      'Patch portal landing sections for the active template. harbor schema saas: hero, trust, capabilities, stats, cta, team, why, contact. forge schema industrial: hero, trust, productLines, stats, cta, capabilities, contact. Blog templates reject the call. Fields you omit stay. "" or null clears a field. A language set to null clears that language. replace: true starts from empty. Switching templates across schemas in update_template clears saved sections. Links must be site paths. About stays in site_copy.',
+    inputSchema: {
+      type: 'object',
+      required: ['locales'],
+      properties: {
+        locales: { type: 'object' },
+        replace: { type: 'boolean' },
+      },
+    },
+    async run(env, args) {
+      const current = await loadConfig(env.DB)
+      const schema = sectionSchemaOf(presetById(current.template.id))
+      const merged = mergeSections(current.sections, { locales: args.locales }, schema, args.replace === true)
+      if (!merged.ok) throw new Error(merged.error)
+      await saveSettings(env.DB, 'sections', merged.value)
+      const effective: Record<string, unknown> = {}
+      for (const lang of LANGS) effective[lang] = schema ? resolveSections(schema, merged.value, lang) : null
+      return { schema, stored: merged.value, effective }
+    },
+  },
+  {
     name: 'update_template',
-    description: 'Set the public template. A new id also applies that prefab’s accent, type, and layout. Ids: paper, ink, terminal, dispatch, signal, atelier, hearth, practice, civic, launch, orbit.',
+    description:
+      'Set the public template. A new id also applies that prefab’s accent, type, and layout. Ids: paper, ink, terminal, dispatch, signal, atelier, hearth, practice, civic, launch, orbit, harbor, forge. harbor and forge are portals (landing home, section JSON). Changing section schema clears saved sections.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -763,27 +810,11 @@ export const TOOLS: Tool[] = [
       const current = await loadConfig(env.DB)
       const nextId = typeof args.id === 'string' ? args.id : current.template.id
       const preset = nextId !== current.template.id ? presetById(nextId) : null
+      if (preset) await saveTemplateChoice(env.DB, preset, current.layout.show_powered_by, current.template.id)
       const base = preset
         ? { id: preset.id, accent: preset.accent, radius: preset.radius, font: preset.font }
         : current.template
-      const template = parseTemplate({ ...base, ...args, id: nextId })
-      await saveSettings(env.DB, 'template', template)
-      if (preset) {
-        await saveSettings(
-          env.DB,
-          'layout',
-          parseLayout({
-            width: preset.width,
-            header: preset.header,
-            home: preset.home,
-            showAuthor: preset.showAuthor,
-            showTags: preset.showTags,
-            showShare: preset.showShare,
-            showKicker: preset.showKicker,
-            show_powered_by: current.layout.show_powered_by,
-          }),
-        )
-      }
+      await saveSettings(env.DB, 'template', parseTemplate({ ...base, ...args, id: nextId }))
       return loadConfig(env.DB)
     },
   },

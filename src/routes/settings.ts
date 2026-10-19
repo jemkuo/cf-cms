@@ -13,6 +13,7 @@ import {
   parseSiteMeta,
   parseTemplate,
   saveSettings,
+  saveTemplateChoice,
   upsertChannel,
   upsertTag,
 } from '../config'
@@ -62,21 +63,7 @@ export function mountSettings(app: Hono<AppEnv>) {
     if (posted.id !== current.template.id) {
       const preset = presetById(posted.id)
       if (preset) {
-        await saveSettings(c.env.DB, 'template', parseTemplate(preset))
-        await saveSettings(
-          c.env.DB,
-          'layout',
-          parseLayout({
-            width: preset.width,
-            header: preset.header,
-            home: preset.home,
-            showAuthor: preset.showAuthor,
-            showTags: preset.showTags,
-            showShare: preset.showShare,
-            showKicker: preset.showKicker,
-            show_powered_by: current.layout.show_powered_by,
-          }),
-        )
+        await saveTemplateChoice(c.env.DB, preset, current.layout.show_powered_by, current.template.id)
         await refresh(c)
         return page(c, templateView(baseOf(c), 'Template applied.'))
       }

@@ -66,4 +66,12 @@
       })
     })
   }
+  var menu = document.querySelector('[data-portal-menu]')
+  var header = document.querySelector('.site-header')
+  if (menu && header) {
+    menu.addEventListener('click', function () {
+      var open = header.classList.toggle('is-open')
+      menu.setAttribute('aria-expanded', open ? 'true' : 'false')
+    })
+  }
 })()

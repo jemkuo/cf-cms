@@ -1,7 +1,8 @@
 import type { Lang, PostMeta } from './types'
 import { LANGS } from './types'
 import { clip, nowIso, slugOk } from './text'
-import { TEMPLATE_IDS, type TemplateId } from './templates'
+import { TEMPLATE_IDS, presetById, type TemplateId, type TemplatePreset } from './templates'
+import { emptySections, parseSections, readSections, sectionsResetNeeded, type SectionsSettings } from './sections.mjs'
 import { showPoweredBy } from './footer-credit.mjs'
 import { emptyHeadMeta, parseHeadMeta, type HeadMetaSettings } from './head-meta.mjs'
 import { requireAllLanguages } from './publish-gate.mjs'
@@ -59,7 +60,7 @@ export type BrandSettings = {
   faviconSvg: string
   faviconKey: string
 }
-export type { HeadMetaSettings, SiteCopySettings }
+export type { HeadMetaSettings, SiteCopySettings, SectionsSettings }
 
 export type SiteConfig = {
   template: TemplateSettings
@@ -71,6 +72,7 @@ export type SiteConfig = {
   head_meta: HeadMetaSettings
   timezone: string
   site_copy: SiteCopySettings
+  sections: SectionsSettings
 }
 export type SettingsKey = keyof SiteConfig
 
@@ -115,6 +117,7 @@ export const DEFAULT_CONFIG: SiteConfig = {
   head_meta: emptyHeadMeta(),
   timezone: 'UTC',
   site_copy: emptySiteCopy(),
+  sections: emptySections(),
 }
 
 export const EMPTY_POST_META: PostMeta = { noindex: false, canonical: '', keywords: '', ogImage: '' }
@@ -272,9 +275,14 @@ const PARSERS = {
     if (!parsed.ok) throw new Error(parsed.error)
     return parsed.value
   },
+  sections: (input: unknown) => {
+    const parsed = parseSections(input)
+    if (!parsed.ok) throw new Error(parsed.error)
+    return parsed.value
+  },
 } as const
 
-const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy'] as const
+const SETTING_KEYS = ['template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy', 'sections'] as const
 
 export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): SiteConfig {
   return {
@@ -287,13 +295,14 @@ export function parseSettings(partial: Partial<Record<SettingsKey, unknown>>): S
     head_meta: parseHeadMetaSettings(partial.head_meta),
     timezone: parseTimeZone(partial.timezone),
     site_copy: readSiteCopy(partial.site_copy),
+    sections: readSections(partial.sections),
   }
 }
 
 export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   try {
     const { results } = await db
-      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy')`)
+      .prepare(`SELECT key, value_json FROM settings WHERE key IN ('template', 'layout', 'meta', 'share', 'brand', 'require_all_languages', 'head_meta', 'timezone', 'site_copy', 'sections')`)
       .all<{ key: string; value_json: string }>()
     const partial: Partial<Record<SettingsKey, unknown>> = {}
     for (const row of results) {
@@ -308,6 +317,30 @@ export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   } catch {
     return DEFAULT_CONFIG
   }
+}
+
+export async function saveTemplateChoice(
+  db: D1Database,
+  preset: TemplatePreset,
+  showPoweredBy: boolean,
+  previousId: string,
+): Promise<void> {
+  await saveSettings(db, 'template', parseTemplate({ id: preset.id, accent: preset.accent, radius: preset.radius, font: preset.font }))
+  await saveSettings(
+    db,
+    'layout',
+    parseLayout({
+      width: preset.width,
+      header: preset.header,
+      home: preset.home,
+      showAuthor: preset.showAuthor,
+      showTags: preset.showTags,
+      showShare: preset.showShare,
+      showKicker: preset.showKicker,
+      show_powered_by: showPoweredBy,
+    }),
+  )
+  if (sectionsResetNeeded(presetById(previousId), preset)) await saveSettings(db, 'sections', emptySections())
 }
 
 export async function saveSettings(db: D1Database, key: SettingsKey, value: SiteConfig[SettingsKey]): Promise<void> {

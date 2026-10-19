@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+<rect width="1200" height="900" fill="#f7f8fa"/>
+<g fill="#6b7280" transform="translate(200,280)">
+  <rect x="0" y="40" width="520" height="36" rx="18"/><circle cx="0" cy="58" r="22"/><circle cx="520" cy="58" r="18"/>
+  <rect x="80" y="120" width="380" height="28" rx="14"/><circle cx="80" cy="134" r="18"/><circle cx="460" cy="134" r="14"/>
+  <rect x="40" y="200" width="460" height="32" rx="16"/><circle cx="40" cy="216" r="20"/><circle cx="500" cy="216" r="16"/>
+</g>
+<g transform="translate(780,320)" fill="none" stroke="#4b5563" stroke-width="10">
+  <circle r="70"/><circle r="40"/><circle r="12" fill="#9ca3af" stroke="none"/>
+</g>
+<text x="600" y="820" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="22">Ridgport · Shafts &amp; bearings (illustration)</text>
+</svg>

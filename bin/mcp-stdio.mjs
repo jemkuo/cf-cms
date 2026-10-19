@@ -4,6 +4,8 @@
 // Older clients that send LSP-style "Content-Length:" headers still work; replies then use the same framing.
 // Diagnostics go to stderr only, so stdout carries nothing but protocol messages.
 
+import { SETUP_TOOLS, callSetupTool, isSetupTool } from '../src/mcp/setup-tools.mjs'
+
 const endpoint = (process.env.CF_CMS_URL || process.env.CF_BLOGGER_URL || 'http://127.0.0.1:8791').replace(/\/$/, '') + '/mcp'
 const token = process.env.ADMIN_API_TOKEN || ''
 
@@ -20,9 +22,26 @@ function write(message) {
   }
 }
 
+function toolResult(id, payload, isError) {
+  const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)
+  write({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], isError } })
+}
+
 async function forward(message) {
   if (message && typeof message.method === 'string' && message.method.startsWith('notifications/')) return
   const hasId = message && typeof message === 'object' && 'id' in message
+  if (message && message.method === 'tools/call' && isSetupTool(message.params?.name)) {
+    const secret = process.env.CLOUDFLARE_API_TOKEN || ''
+    try {
+      const payload = await callSetupTool(message.params.name, message.params?.arguments || {}, process.env)
+      toolResult(message.id ?? null, payload, false)
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : 'Setup tool failed'
+      const safe = secret && secret.length >= 8 ? raw.split(secret).join('[redacted]') : raw
+      toolResult(message.id ?? null, safe, true)
+    }
+    return
+  }
   let response
   try {
     response = await fetch(endpoint, {
@@ -52,6 +71,12 @@ async function forward(message) {
   } catch {
     if (hasId) write({ jsonrpc: '2.0', id: message.id ?? null, error: { code: -32603, message: `CF CMS returned HTTP ${response.status} without JSON` } })
     return
+  }
+  if (message && message.method === 'tools/list' && payload && payload.result && Array.isArray(payload.result.tools)) {
+    const names = new Set(payload.result.tools.map((tool) => tool && tool.name))
+    for (const tool of SETUP_TOOLS) {
+      if (!names.has(tool.name)) payload.result.tools.push(tool)
+    }
   }
   write(payload)
 }
