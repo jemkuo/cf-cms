@@ -64,7 +64,7 @@ function portalStyle(settings: SiteConfig): string {
   const preset = presetById(settings.template.id)
   if (!preset || templateMode(preset) !== 'portal') return ''
   if (preset.cssPack !== 'harbor' && preset.cssPack !== 'forge') return ''
-  return `/themes/${preset.cssPack}.css?v=1`
+  return `/themes/${preset.cssPack}.css?v=2`
 }
 
 export function shell(input: Shell) {

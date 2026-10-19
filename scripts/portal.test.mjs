@@ -43,6 +43,14 @@ test('template ids and portal fields are declared', () => {
   assert.match(layout, /\/themes\/\$\{preset\.cssPack\}\.css/)
   assert.equal(readFileSync(new URL('../public/themes/harbor.css', import.meta.url), 'utf8').includes('--accent: #22d3ee'), true)
   assert.equal(readFileSync(new URL('../public/themes/forge.css', import.meta.url), 'utf8').includes('--accent: #1d4ed8'), true)
+  for (const file of ['harbor.css', 'forge.css']) {
+    const css = readFileSync(new URL(`../public/themes/${file}`, import.meta.url), 'utf8')
+    const hero = css.match(/\.hero \{[^}]+\}/)
+    assert.ok(hero, file)
+    assert.match(hero[0], /background:\s*transparent/)
+    assert.doesNotMatch(hero[0], /--mark|#efe6d4/)
+  }
+  assert.match(layout, /\.css\?v=2/)
 })
 
 test('sections schemas reject the other template and clear empty strings', () => {

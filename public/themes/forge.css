@@ -99,6 +99,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .hero {
   padding: 3.5rem 0 2.5rem;
   display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 2.25rem; align-items: center;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .eyebrow {
   display: inline-flex; align-items: center; gap: 0.4rem;
